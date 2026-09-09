@@ -455,6 +455,42 @@ function uploadSinglePhoto(photoBase64, filename) {
   }
 }
 
+/**
+ * 接收照片分塊（JSONP 無法一次傳送大張 base64）
+ */
+function uploadPhotoChunk(filename, index, total, chunk) {
+  const cache = CacheService.getScriptCache();
+  const safe = String(filename || '').replace(/[^A-Za-z0-9._-]/g, '_');
+  cache.put('ph_' + safe + '_' + Number(index), String(chunk || ''), 600);
+  cache.put('phm_' + safe, String(total), 600);
+  return { success: true, index: Number(index), total: Number(total) };
+}
+
+/**
+ * 組合分塊後上傳到 Drive
+ */
+function finalizePhotoUpload(filename) {
+  const cache = CacheService.getScriptCache();
+  const safe = String(filename || '').replace(/[^A-Za-z0-9._-]/g, '_');
+  const total = Number(cache.get('phm_' + safe) || 0);
+  if (!total) {
+    throw new Error('找不到照片分塊，請重新上傳');
+  }
+  const parts = [];
+  for (let i = 0; i < total; i++) {
+    const part = cache.get('ph_' + safe + '_' + i);
+    if (part === null || part === undefined) {
+      throw new Error('照片分塊缺失：' + (i + 1) + '/' + total);
+    }
+    parts.push(part);
+  }
+  for (let i = 0; i < total; i++) {
+    cache.remove('ph_' + safe + '_' + i);
+  }
+  cache.remove('phm_' + safe);
+  return uploadSinglePhoto(parts.join(''), filename);
+}
+
 function saveScore(scoreData) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2703,7 +2739,9 @@ function requireAuthPassword_(password) {
 function dispatchAction_(action, args, authPassword) {
   const mutatingActions = {
     saveScore: true,
-    uploadSinglePhoto: true
+    uploadSinglePhoto: true,
+    uploadPhotoChunk: true,
+    finalizePhotoUpload: true
   };
   if (mutatingActions[action]) {
     requireAuthPassword_(authPassword);
@@ -2724,6 +2762,10 @@ function dispatchAction_(action, args, authPassword) {
       return getAllClassrooms();
     case 'uploadSinglePhoto':
       return uploadSinglePhoto(args[0], args[1]);
+    case 'uploadPhotoChunk':
+      return uploadPhotoChunk(args[0], args[1], args[2], args[3]);
+    case 'finalizePhotoUpload':
+      return finalizePhotoUpload(args[0]);
     case 'saveScore':
       return saveScore(args[0]);
     case 'getScoreRecords':
