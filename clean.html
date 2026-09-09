@@ -138,17 +138,35 @@
     input[type="date"] {
       width: 100%;
       max-width: 100%;
-      min-width: 0;
+      min-width: 100%;
       box-sizing: border-box;
       display: block;
       padding: 12px;
-      border: 2px solid #ddd;
+      border: none;
       border-radius: 5px;
       font-size: 16px;
+      background: transparent;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .date-wrap {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      background-color: #f2f2f7;
+      overflow: hidden;
+    }
+
+    .date-wrap:focus-within {
+      border-color: #2196F3;
     }
 
     input[type="date"]::-webkit-datetime-edit,
     input[type="date"]::-webkit-date-and-time-value {
+      width: 100%;
       min-width: 0;
       max-width: 100%;
     }
@@ -192,6 +210,7 @@
       border: 2px solid #ddd;
       border-radius: 5px;
       font-size: 16px;
+      background-color: #f2f2f7;
       transition: border-color 0.3s;
     }
     
@@ -209,11 +228,6 @@
     @media (max-width: 600px) {
       .form-row {
         grid-template-columns: 1fr;
-      }
-
-      input[type="date"] {
-        font-size: 16px;
-        padding: 10px 8px;
       }
       
       .query-tab {
@@ -750,7 +764,7 @@
         <p class="panel-desc">查該週各年級特優／優等／待改進，並可匯出排名 CSV、試算表分頁與 Google 文件。</p>
         <div class="form-group">
           <label for="weekSelect">選擇週（請選週一）</label>
-          <input type="date" id="weekSelect">
+          <div class="date-wrap"><input type="date" id="weekSelect"></div>
           <p class="hint-text">預設為本週一</p>
         </div>
         <div class="btn-row">
@@ -792,7 +806,7 @@
         <p class="panel-desc">同一年級內，挑選多個班級比較該週每日分數與總分。</p>
         <div class="form-group">
           <label for="comparisonWeekSelect">選擇週（請選週一）</label>
-          <input type="date" id="comparisonWeekSelect">
+          <div class="date-wrap"><input type="date" id="comparisonWeekSelect"></div>
           <p class="hint-text">預設為本週一</p>
         </div>
         <div class="form-group">
@@ -828,12 +842,12 @@
         <div class="form-row">
           <div class="form-group">
             <label for="semesterStartDate">開始日期</label>
-            <input type="date" id="semesterStartDate">
+            <div class="date-wrap"><input type="date" id="semesterStartDate"></div>
           </div>
           
           <div class="form-group">
             <label for="semesterEndDate">結束日期</label>
-            <input type="date" id="semesterEndDate">
+            <div class="date-wrap"><input type="date" id="semesterEndDate"></div>
           </div>
         </div>
         
