@@ -2691,19 +2691,28 @@ function handleApiRequest(e) {
       request = JSON.parse(e.postData.contents);
     } else if (e && e.parameter) {
       if (e.parameter.payload) {
-        request = JSON.parse(e.parameter.payload);
-      } else {
-        request = {};
-        const keys = Object.keys(e.parameter);
-        for (let i = 0; i < keys.length; i++) {
-          request[keys[i]] = e.parameter[keys[i]];
+        try {
+          request = JSON.parse(e.parameter.payload);
+        } catch (parsePayloadErr) {
+          request = {};
         }
-        if (typeof request.args === 'string') {
+      }
+      if (!request.action) {
+        request.action = e.parameter.action || '';
+        request.authPassword = request.authPassword || e.parameter.authPassword || '';
+        if (e.parameter.args) {
           try {
-            request.args = JSON.parse(request.args);
-          } catch (parseErr) {
+            request.args = JSON.parse(e.parameter.args);
+          } catch (parseArgsErr) {
             request.args = [];
           }
+        }
+      }
+      if (typeof request.args === 'string') {
+        try {
+          request.args = JSON.parse(request.args);
+        } catch (parseErr) {
+          request.args = [];
         }
       }
     }

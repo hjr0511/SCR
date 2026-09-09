@@ -86,9 +86,15 @@
         reject(new Error('無法連到後端，請確認 Web App 已部署最新 Code.gs，且存取權為「任何人」。'));
       };
 
-      script.src = getUrl()
-        + '?payload=' + encodeURIComponent(JSON.stringify(payload))
-        + '&callback=' + encodeURIComponent(cb);
+      var qs = [
+        'action=' + encodeURIComponent(payload.action || ''),
+        'args=' + encodeURIComponent(JSON.stringify(payload.args || [])),
+        'callback=' + encodeURIComponent(cb)
+      ];
+      if (payload.authPassword) {
+        qs.push('authPassword=' + encodeURIComponent(payload.authPassword));
+      }
+      script.src = getUrl() + '?' + qs.join('&');
       document.head.appendChild(script);
     });
   }
