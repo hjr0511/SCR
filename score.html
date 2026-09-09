@@ -319,6 +319,44 @@
       cursor: not-allowed;
     }
     
+    .toast-modal {
+      display: none;
+      position: fixed;
+      z-index: 4000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      align-items: center;
+      justify-content: center;
+    }
+    .toast-modal.show {
+      display: flex;
+    }
+    .toast-modal-box {
+      background: #2e7d32;
+      color: #fff;
+      padding: 28px 44px;
+      border-radius: 14px;
+      font-size: 28px;
+      font-weight: bold;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    }
+    .photo-item.uploading::after {
+      content: '上傳中';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(33, 150, 243, 0.85);
+      color: #fff;
+      font-size: 12px;
+      text-align: center;
+      padding: 4px 0;
+    }
+    
     .message {
       padding: 15px;
       border-radius: 5px;
@@ -686,7 +724,7 @@
       
       <div class="photo-section">
         <label>拍照扣分</label>
-        <p class="info-text">每張照片扣 1 分，可拍攝多張照片記錄扣分項目（每項缺失扣1分）</p>
+        <p class="info-text">拍照當下就會開始上傳。每張照片扣 1 分，拍完可立刻提交、走到下一班。</p>
         <button type="button" class="camera-btn" id="cameraBtn">📷 開啟相機拍照</button>
         <button type="button" class="file-btn" id="fileBtn">📁 選擇照片檔案</button>
         <input type="file" id="fileInput" accept="image/*" multiple>
@@ -730,6 +768,10 @@
       
       <button type="submit" class="submit-btn" id="submitBtn">提交評分</button>
     </form>
+  </div>
+
+  <div id="uploadSuccessModal" class="toast-modal" aria-live="assertive">
+    <div class="toast-modal-box">上傳成功</div>
   </div>
 
   <!-- 設定 Modal -->
@@ -794,10 +836,12 @@
       try {
         var params = new URLSearchParams(window.location.search);
         var fromUrl = params.get('loginType') || '';
-        var fromSession = sessionStorage.getItem('SCHOOL_SCORE_LOGIN_TYPE') || '';
-        var auth = sessionStorage.getItem('SCHOOL_SCORE_AUTH') || '';
+        var loginKey = (window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE';
+        var authKey = (window.APP_CONFIG && window.APP_CONFIG.AUTH_STORAGE_KEY) || 'SCHOOL_SCORE_AUTH';
+        var fromSession = sessionStorage.getItem(loginKey) || '';
+        var auth = sessionStorage.getItem(authKey) || '';
         if (!auth) {
-          window.location.replace('index.html');
+          window.location.replace('clean.html');
           return '';
         }
         return fromUrl || fromSession;
@@ -806,7 +850,7 @@
       }
     })();
     
-    let photos = []; // 儲存照片的 base64 字串陣列
+    let photos = []; // { dataUrl, link, uploading, promise }
     let allClassrooms = []; // 儲存所有教室資料
     let currentClassrooms = []; // 儲存當前載入的教室清單（包含順序資訊）
     let isStudentLogin = false; // 標記是否為學生登入
@@ -1549,7 +1593,7 @@
     
     // 回評分結果查詢頁（GitHub 靜態頁）
     function goBackToViewScores() {
-      window.location.href = 'index.html';
+      window.location.href = 'clean.html';
     }
     
     // 打開設定 modal
@@ -1843,30 +1887,63 @@
       Array.from(files).forEach(function(file) {
         if (file.type.startsWith('image/')) {
           // 壓縮成約 400px、品質 32%，評分紀錄已夠看，上傳也較快
-          compressImage(file, 400, 400, 0.32)
+          compressImage(file, 320, 320, 0.25)
             .then(function(compressedBase64) {
-              photos.push(compressedBase64);
-              updatePhotoPreview();
-              updateTotalScore();
-              
-              // 計算壓縮後的大小
-              const originalSize = file.size;
-              const compressedSize = compressedBase64.length * 0.75; // base64 大約是原始大小的 133%
-              const compressionRatio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
-              console.log('圖片壓縮完成：原始大小 ' + (originalSize / 1024).toFixed(2) + ' KB，壓縮後 ' + (compressedSize / 1024).toFixed(2) + ' KB，節省 ' + compressionRatio + '%');
+              addPhotoAndUpload(compressedBase64);
             })
             .catch(function(error) {
               // 如果壓縮失敗，使用原始圖片
               const reader = new FileReader();
               reader.onload = function(e) {
-                photos.push(e.target.result);
-                updatePhotoPreview();
-                updateTotalScore();
+                addPhotoAndUpload(e.target.result);
               };
               reader.readAsDataURL(file);
             });
         }
       });
+    }
+    
+    function getPhotoDataUrl(photo) {
+      return typeof photo === 'string' ? photo : (photo && photo.dataUrl) || '';
+    }
+    
+    function addPhotoAndUpload(dataUrl) {
+      const item = {
+        dataUrl: dataUrl,
+        link: '',
+        uploading: true,
+        promise: null
+      };
+      const filename = 'p' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
+      item.promise = new Promise(function(resolve) {
+        google.script.run
+          .withSuccessHandler(function(link) {
+            item.link = link || '';
+            item.uploading = false;
+            updatePhotoPreview();
+            resolve(item.link);
+          })
+          .withFailureHandler(function() {
+            google.script.run
+              .withSuccessHandler(function(link) {
+                item.link = link || '';
+                item.uploading = false;
+                updatePhotoPreview();
+                resolve(item.link);
+              })
+              .withFailureHandler(function() {
+                item.uploading = false;
+                item.error = true;
+                updatePhotoPreview();
+                resolve('');
+              })
+              .uploadSinglePhoto(dataUrl, filename);
+          })
+          .uploadSinglePhoto(dataUrl, filename);
+      });
+      photos.push(item);
+      updatePhotoPreview();
+      updateTotalScore();
     }
     
     // 更新照片預覽
@@ -1876,10 +1953,10 @@
       
       photos.forEach(function(photo, index) {
         const div = document.createElement('div');
-        div.className = 'photo-item';
+        div.className = 'photo-item' + (photo && photo.uploading ? ' uploading' : '');
         
         const img = document.createElement('img');
-        img.src = photo;
+        img.src = getPhotoDataUrl(photo);
         img.alt = '扣分照片 ' + (index + 1);
         
         const removeBtn = document.createElement('button');
@@ -1978,16 +2055,32 @@
       
       submitBtn.disabled = true;
       
-      // 先上傳照片獲取連結，再提交評分資料
       const photosToUpload = photos.slice();
       const photoCountBeforeUpload = photosToUpload.length;
       
-      // 如果有照片，先並行上傳照片（優化：使用並行上傳以提升速度）
+      function finishWithLinks(photoLinks) {
+        scoreData.photoLinks = (photoLinks || []).filter(Boolean).join('; ');
+        scoreData.photoCount = photoCountBeforeUpload;
+        submitScoreWithPhotoLinks(scoreData, photoLinks.filter(Boolean).length, photoCountBeforeUpload, classroomName);
+      }
+      
       if (photosToUpload.length > 0) {
         submitBtn.textContent = '上傳照片中...';
-        uploadPhotosInParallel(photosToUpload, scoreData.classroomName || scoreData.classroomId, function(photoLinks) {
-          // 檢查是否有照片上傳失敗
-          if (photoLinks.length === 0 && photoCountBeforeUpload > 0) {
+        const pending = photosToUpload.map(function(photo) {
+          if (photo && photo.link) return Promise.resolve(photo.link);
+          if (photo && photo.promise) return photo.promise;
+          const dataUrl = getPhotoDataUrl(photo);
+          return new Promise(function(resolve) {
+            const filename = 'p' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
+            google.script.run
+              .withSuccessHandler(function(link) { resolve(link || ''); })
+              .withFailureHandler(function() { resolve(''); })
+              .uploadSinglePhoto(dataUrl, filename);
+          });
+        });
+        Promise.all(pending).then(function(links) {
+          const ok = links.filter(Boolean);
+          if (ok.length === 0 && photoCountBeforeUpload > 0) {
             const confirmContinue = confirm('所有照片上傳失敗。可能是權限問題。\n\n是否仍要提交評分記錄（不含照片）？');
             if (!confirmContinue) {
               submitBtn.disabled = false;
@@ -1995,15 +2088,10 @@
               return;
             }
           }
-          
-          // 將照片連結加入評分資料並提交
-          scoreData.photoLinks = photoLinks.join('; ');
-          submitScoreWithPhotoLinks(scoreData, photoLinks.length, photoCountBeforeUpload, classroomName);
+          finishWithLinks(ok);
         });
       } else {
-        // 沒有照片，直接提交
-        scoreData.photoLinks = '';
-        submitScoreWithPhotoLinks(scoreData, 0, 0, classroomName);
+        finishWithLinks([]);
       }
     }
     
@@ -2182,15 +2270,18 @@
       uploadBatch();
     }
     
+    function showUploadSuccessModal() {
+      const modal = document.getElementById('uploadSuccessModal');
+      if (!modal) return;
+      modal.classList.add('show');
+      setTimeout(function() {
+        modal.classList.remove('show');
+      }, 1000);
+    }
+    
     // 處理提交成功
     function handleSubmitSuccess(result, classroomName) {
-      let message = result.message || '評分記錄已成功儲存！';
-      if (result.photoLinksCount !== undefined && result.photoLinksCount > 0) {
-        message += ' 照片連結數量：' + result.photoLinksCount;
-      } else if (result.expectedPhotoCount !== undefined && result.expectedPhotoCount > 0) {
-        message += ' 警告：有照片但未成功上傳，請檢查權限';
-      }
-      showMessage(message, 'success');
+      showUploadSuccessModal();
       
       // 自動切換到下一個教室（按教室名稱區分，因編號可能是樓層而重複）
       const classroomSelect = document.getElementById('classroom');

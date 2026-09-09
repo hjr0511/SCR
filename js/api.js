@@ -31,13 +31,16 @@
     var bar = document.createElement('div');
     bar.id = 'gas-config-warning';
     bar.style.cssText = 'position:sticky;top:0;z-index:9999;background:#c62828;color:#fff;padding:12px 16px;text-align:center;font-family:"Microsoft JhengHei",Arial,sans-serif;';
-    bar.textContent = '尚未設定後端網址：請開啟 js/config.js，填入 Google Apps Script Web App 網址。';
+    var cfgFile = (global.APP_CONFIG && global.APP_CONFIG.CONFIG_FILE) || 'js/config.js';
+    bar.textContent = '尚未設定後端網址：請開啟 ' + cfgFile + '，填入 Google Apps Script Web App 網址。';
     document.body.insertBefore(bar, document.body.firstChild);
   }
 
   function getAuthPassword() {
     try {
-      return sessionStorage.getItem('SCHOOL_SCORE_AUTH') || '';
+      var cfg = global.APP_CONFIG || {};
+      var key = cfg.AUTH_STORAGE_KEY || 'SCHOOL_SCORE_AUTH';
+      return sessionStorage.getItem(key) || '';
     } catch (err) {
       return '';
     }
@@ -177,7 +180,7 @@
   }
 
   function uploadPhotoByChunks(base64, filename) {
-    var chunkSize = 1600;
+    var chunkSize = 2400;
     var data = String(base64 || '');
     var total = Math.ceil(data.length / chunkSize) || 1;
     var tasks = [];
@@ -190,7 +193,7 @@
         };
       })(n));
     }
-    return runPool(tasks, 6).then(function () {
+    return runPool(tasks, 8).then(function () {
       return jsonpGet(buildPayload('finalizePhotoUpload', [filename]));
     });
   }
