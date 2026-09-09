@@ -1842,10 +1842,8 @@
     function handleFileSelect(files) {
       Array.from(files).forEach(function(file) {
         if (file.type.startsWith('image/')) {
-          // 壓縮圖片：最大寬度450px，最大高度450px，品質0.35（35%）
-          // 優化：進一步降低解析度和品質以最大化上傳速度
-          // 對於評分記錄照片，450px 解析度和 35% 品質已足夠清晰且速度最快
-          compressImage(file, 450, 450, 0.35)
+          // 壓縮成約 400px、品質 32%，評分紀錄已夠看，上傳也較快
+          compressImage(file, 400, 400, 0.32)
             .then(function(compressedBase64) {
               photos.push(compressedBase64);
               updatePhotoPreview();
