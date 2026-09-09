@@ -137,10 +137,31 @@
     
     input[type="date"] {
       width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      display: block;
       padding: 12px;
       border: 2px solid #ddd;
       border-radius: 5px;
       font-size: 16px;
+    }
+
+    input[type="date"]::-webkit-datetime-edit,
+    input[type="date"]::-webkit-date-and-time-value {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .form-group,
+    .filter-section,
+    .form-row {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .filter-section {
+      overflow-x: hidden;
     }
     
     input[type="date"]:focus {
@@ -188,6 +209,11 @@
     @media (max-width: 600px) {
       .form-row {
         grid-template-columns: 1fr;
+      }
+
+      input[type="date"] {
+        font-size: 16px;
+        padding: 10px 8px;
       }
       
       .query-tab {
