@@ -1,5 +1,6 @@
 /**
- * 小資料用 JSONP；照片等大資料優先走隱藏 iframe + google.script.run（一次傳完，較快）。
+ * 一般資料用 JSONP（一進頁就能點按鈕）。
+ * 照片等大資料才在需要時載入隱藏 iframe + google.script.run（一次傳完）。
  */
 (function (global) {
   var callId = 0;
@@ -62,11 +63,29 @@
     iframe = document.createElement('iframe');
     iframe.id = 'gas-api-bridge';
     iframe.title = 'Google Apps Script bridge';
+    iframe.tabIndex = -1;
     iframe.setAttribute('aria-hidden', 'true');
-    iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none;';
+    iframe.setAttribute('tabindex', '-1');
+    iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none;visibility:hidden;z-index:-1;';
+    iframe.addEventListener('focus', function () {
+      try { iframe.blur(); } catch (err) {}
+    });
     iframe.src = getUrl() + '?page=bridge';
     (document.body || document.documentElement).appendChild(iframe);
     return iframe;
+  }
+
+  function postToBridge(data) {
+    if (!iframe || !iframe.contentWindow) return;
+    var win = iframe.contentWindow;
+    try { win.postMessage(data, '*'); } catch (err) {}
+    try {
+      var n = win.length || 0;
+      var i;
+      for (i = 0; i < n; i++) {
+        try { win[i].postMessage(data, '*'); } catch (innerErr) {}
+      }
+    } catch (err) {}
   }
 
   function waitForBridge(timeoutMs) {
@@ -80,7 +99,7 @@
         settled = true;
         iframeFailed = true;
         resolve(false);
-      }, timeoutMs || 5000);
+      }, timeoutMs || 2500);
       readyWaiters.push({
         resolve: function () {
           if (settled) return;
@@ -93,20 +112,20 @@
   }
 
   function callViaIframe(action, args) {
-    return waitForBridge(5000).then(function (ok) {
+    return waitForBridge(2500).then(function (ok) {
       if (!ok || !iframe || !iframe.contentWindow) {
         throw new Error('NO_IFRAME');
       }
       return new Promise(function (resolve, reject) {
         var id = 'c' + (++callId);
         pending[id] = { resolve: resolve, reject: reject };
-        iframe.contentWindow.postMessage({
+        postToBridge({
           type: 'gas-call',
           id: id,
           action: action,
           args: args || [],
           authPassword: MUTATING[action] ? getAuthPassword() : ''
-        }, '*');
+        });
         setTimeout(function () {
           if (!pending[id]) return;
           delete pending[id];
@@ -204,15 +223,12 @@
       return Promise.reject(new Error('尚未設定 Apps Script Web App 網址（js/config.js）'));
     }
     args = args || [];
-    return callViaIframe(action, args).catch(function (err) {
-      if (action === 'uploadSinglePhoto') {
+    if (action === 'uploadSinglePhoto') {
+      return callViaIframe(action, args).catch(function () {
         return uploadPhotoByChunks(args[0], args[1]);
-      }
-      if (err && err.message === 'NO_IFRAME') {
-        return jsonpGet(buildPayload(action, args));
-      }
-      return jsonpGet(buildPayload(action, args));
-    });
+      });
+    }
+    return jsonpGet(buildPayload(action, args));
   }
 
   global.addEventListener('message', function (e) {
@@ -266,8 +282,7 @@
   global.callSchoolApi = callApi;
 
   function boot() {
-    if (isConfigured()) ensureIframe();
-    else showConfigError();
+    if (!isConfigured()) showConfigError();
   }
   if (document.body) boot();
   else document.addEventListener('DOMContentLoaded', boot);
