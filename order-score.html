@@ -331,6 +331,32 @@
       cursor: not-allowed;
     }
     
+    .toast-modal {
+      display: none;
+      position: fixed;
+      z-index: 4000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      align-items: center;
+      justify-content: center;
+    }
+    .toast-modal.show {
+      display: flex;
+    }
+    .toast-modal-box {
+      background: #2e7d32;
+      color: #fff;
+      padding: 28px 44px;
+      border-radius: 14px;
+      font-size: 28px;
+      font-weight: bold;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    }
+    
     .message {
       padding: 15px;
       border-radius: 5px;
@@ -744,6 +770,10 @@
       
       <button type="submit" class="submit-btn" id="submitBtn">提交評分</button>
     </form>
+  </div>
+
+  <div id="uploadSuccessModal" class="toast-modal" aria-live="assertive">
+    <div class="toast-modal-box">送出成功</div>
   </div>
 
   <!-- 設定 Modal -->
@@ -1983,9 +2013,18 @@
         .saveScore(dataToSubmit);
     }
     
+    function showUploadSuccessModal() {
+      const modal = document.getElementById('uploadSuccessModal');
+      if (!modal) return;
+      modal.classList.add('show');
+      setTimeout(function() {
+        modal.classList.remove('show');
+      }, 1000);
+    }
+    
     // 處理提交成功
     function handleSubmitSuccess(result, classroomName) {
-      showMessage(message, 'success');
+      showUploadSuccessModal();
       
       // 自動切換到下一個教室（按教室名稱區分，因編號可能是樓層而重複）
       const classroomSelect = document.getElementById('classroom');
@@ -2029,16 +2068,17 @@
     }
     
     // 顯示訊息
-    function showMessage(message, type) {
+    function showMessage(text, type) {
       const messageDiv = document.getElementById('message');
-      messageDiv.textContent = message;
+      if (!messageDiv) return;
+      const safe = (text && text.nodeType) ? String(text.textContent || '') : String(text || '');
+      messageDiv.textContent = safe;
       messageDiv.className = 'message ' + type;
       messageDiv.style.display = 'block';
       
-      // 3秒後自動隱藏所有訊息（包括成功和錯誤）
       setTimeout(function() {
         messageDiv.style.display = 'none';
-      }, 3000);
+      }, type === 'error' ? 3000 : 1000);
     }
   </script>
 </body>
