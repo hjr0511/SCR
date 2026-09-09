@@ -1,0 +1,2045 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Permissions-Policy" content="ambient-light-sensor=(), speaker=(), vibrate=(), vr=()">
+  <title>學校秩序評分系統</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Microsoft JhengHei', Arial, sans-serif;
+      background-color: #f5f5f5;
+      padding: 10px;
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+      text-align: center;
+      border-bottom: 3px solid #e67e22;
+      padding-bottom: 10px;
+      font-size: 24px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #555;
+      font-weight: bold;
+    }
+    
+    select, input[type="text"], input[type="number"], textarea {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 40px;
+    }
+    
+    select:focus, input:focus, textarea:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+    
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    
+    @media (max-width: 768px) {
+      body {
+        padding: 5px;
+      }
+      
+      .container {
+        padding: 15px;
+        border-radius: 5px;
+      }
+      
+      h1 {
+        font-size: 20px;
+        margin-bottom: 15px;
+        padding-bottom: 8px;
+      }
+      
+      .form-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      
+      .form-group {
+        margin-bottom: 15px;
+      }
+      
+      label {
+        font-size: 14px;
+        margin-bottom: 6px;
+      }
+      
+      select, input[type="text"], input[type="number"], textarea {
+        padding: 10px;
+        font-size: 16px; /* 防止 iOS 自動縮放 */
+      }
+      
+      .photo-section {
+        padding: 15px;
+        margin: 15px 0;
+      }
+      
+      .photo-preview {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+      }
+      
+      .photo-item img {
+        height: 120px;
+      }
+      
+      .camera-btn, .file-btn {
+        width: 100%;
+        margin-right: 0;
+        margin-top: 8px;
+        padding: 12px;
+        font-size: 15px;
+      }
+      
+      .camera-btn:first-of-type {
+        margin-top: 0;
+      }
+      
+      .score-summary {
+        padding: 12px;
+        font-size: 14px;
+      }
+      
+      .score-summary strong {
+        font-size: 16px;
+      }
+      
+      .score-summary.total {
+        font-size: 16px;
+      }
+      
+      .submit-btn {
+        padding: 12px;
+        font-size: 16px;
+        margin-top: 15px;
+      }
+      
+      .info-text {
+        font-size: 12px;
+      }
+      
+      .grade-info {
+        font-size: 12px;
+        padding: 8px;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .container {
+        padding: 12px;
+      }
+      
+      h1 {
+        font-size: 18px;
+      }
+      
+      .photo-preview {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 8px;
+      }
+      
+      .photo-item img {
+        height: 100px;
+      }
+      
+      .photo-item .remove-btn {
+        width: 25px;
+        height: 25px;
+        font-size: 16px;
+      }
+    }
+    
+    .photo-section {
+      margin: 20px 0;
+      padding: 20px;
+      background-color: #f9f9f9;
+      border-radius: 5px;
+      border: 2px dashed #ddd;
+    }
+    
+    .check-row {
+      display: block;
+      margin: 10px 0;
+      font-size: 16px;
+      color: #333;
+    }
+    .check-row input[type="number"] {
+      width: 90px;
+      margin-top: 6px;
+      display: block;
+    }
+    
+    .photo-preview {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    
+    .photo-item {
+      position: relative;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      overflow: hidden;
+      background: #fff;
+    }
+    
+    .photo-item img {
+      width: 100%;
+      height: 150px;
+      object-fit: cover;
+      display: block;
+    }
+    
+    .photo-item .remove-btn {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      background: rgba(255, 0, 0, 0.8);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      cursor: pointer;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .photo-item .remove-btn:hover {
+      background: rgba(255, 0, 0, 1);
+    }
+    
+    .camera-btn, .file-btn {
+      padding: 12px 24px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-right: 10px;
+      margin-top: 10px;
+      transition: background-color 0.3s;
+    }
+    
+    .camera-btn:hover, .file-btn:hover {
+      background-color: #45a049;
+    }
+    
+    .camera-btn:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    
+    .score-summary {
+      background-color: #fff3cd;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 15px 0;
+      border-left: 4px solid #ffc107;
+    }
+    
+    .score-summary.bonus {
+      background-color: #d1ecf1;
+      border-left-color: #0c5460;
+    }
+    
+    .score-summary.total {
+      background-color: #d4edda;
+      border-left-color: #28a745;
+      font-size: 18px;
+    }
+    
+    .score-summary strong {
+      color: #856404;
+      font-size: 18px;
+    }
+    
+    .score-summary.bonus strong {
+      color: #0c5460;
+    }
+    
+    .score-summary.total strong {
+      color: #155724;
+    }
+    
+    .submit-btn {
+      width: 100%;
+      padding: 15px;
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: background-color 0.3s;
+    }
+    
+    .submit-btn:hover {
+      background-color: #0b7dda;
+    }
+    
+    .submit-btn:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    
+    .message {
+      padding: 15px;
+      border-radius: 5px;
+      margin: 15px 0;
+      display: none;
+    }
+    
+    .message.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .message.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    input[type="file"] {
+      display: none;
+    }
+    
+    .info-text {
+      color: #666;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+    
+    .grade-info {
+      background-color: #e7f3ff;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 5px;
+      font-size: 14px;
+      color: #0066cc;
+    }
+    
+    /* Modal 樣式 */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+    
+    .modal-content {
+      background-color: #fefefe;
+      margin: 2% auto;
+      padding: 40px;
+      border: 1px solid #888;
+      border-radius: 10px;
+      width: 95%;
+      max-width: 800px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      max-height: 95vh;
+      overflow-y: auto;
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #4CAF50;
+    }
+    
+    .modal-header h2 {
+      margin: 0;
+      color: #333;
+      font-size: 32px;
+      font-weight: bold;
+    }
+    
+    .close {
+      color: #aaa;
+      font-size: 36px;
+      font-weight: bold;
+      cursor: pointer;
+      line-height: 1;
+      padding: 5px 10px;
+    }
+    
+    .close:hover,
+    .close:focus {
+      color: #000;
+    }
+    
+    .settings-btn {
+      padding: 14px 28px;
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-bottom: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      transition: background-color 0.3s;
+    }
+    
+    .settings-btn:hover {
+      background-color: #0b7dda;
+    }
+    
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    .header-actions .settings-btn {
+      margin-bottom: 0;
+    }
+    
+    .back-btn {
+      padding: 14px 28px;
+      background-color: #607d8b;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      transition: background-color 0.3s;
+    }
+    
+    .back-btn:hover {
+      background-color: #546e7a;
+    }
+    
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 15px;
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 1px solid #ddd;
+    }
+    
+    .modal-btn {
+      padding: 16px 32px;
+      border: none;
+      border-radius: 5px;
+      font-size: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    .modal-btn.save {
+      background-color: #4CAF50;
+      color: white;
+    }
+    
+    .modal-btn.save:hover {
+      background-color: #45a049;
+    }
+    
+    .modal-btn.cancel {
+      background-color: #6c757d;
+      color: white;
+    }
+    
+    .modal-btn.cancel:hover {
+      background-color: #5a6268;
+    }
+    
+    /* Modal 內的表單元素字體大小 */
+    #settingsForm .form-group {
+      margin-bottom: 25px;
+    }
+    
+    #settingsForm label {
+      font-size: 20px;
+      margin-bottom: 12px;
+      font-weight: bold;
+    }
+    
+    #settingsForm select,
+    #settingsForm input[type="text"],
+    #settingsForm input[type="number"],
+    #settingsForm textarea {
+      font-size: 20px;
+      padding: 16px;
+      border-width: 2px;
+    }
+    
+    #settingsForm select {
+      padding-right: 50px;
+      background-position: right 16px center;
+    }
+    
+    #settingsForm .info-text {
+      font-size: 16px;
+      margin-top: 8px;
+    }
+    
+    @media (max-width: 768px) {
+      .modal-content {
+        margin: 0;
+        padding: 25px 20px;
+        width: 100%;
+        max-width: 100%;
+        border-radius: 0;
+        max-height: 100vh;
+        min-height: 100vh;
+      }
+      
+      .modal-header {
+        margin-bottom: 20px;
+        padding-bottom: 12px;
+      }
+      
+      .modal-header h2 {
+        font-size: 28px;
+      }
+      
+      .close {
+        font-size: 40px;
+        padding: 8px;
+      }
+      
+      .modal-footer {
+        flex-direction: column-reverse;
+        gap: 15px;
+        margin-top: 30px;
+        padding-top: 25px;
+      }
+      
+      .modal-btn {
+        width: 100%;
+        padding: 18px;
+        font-size: 22px;
+      }
+      
+      .settings-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 16px 24px;
+        font-size: 22px;
+      }
+      
+      .back-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 16px 24px;
+        font-size: 22px;
+      }
+      
+      .header-actions {
+        flex-direction: column;
+      }
+      
+      #settingsForm .form-group {
+        margin-bottom: 22px;
+      }
+      
+      #settingsForm label {
+        font-size: 22px;
+        margin-bottom: 10px;
+      }
+      
+      #settingsForm select,
+      #settingsForm input[type="text"],
+      #settingsForm input[type="number"],
+      #settingsForm textarea {
+        padding: 18px;
+        font-size: 20px;
+      }
+      
+      #settingsForm select {
+        padding-right: 50px;
+        background-position: right 18px center;
+      }
+      
+      #settingsForm .info-text {
+        font-size: 18px;
+        margin-top: 8px;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .modal-content {
+        padding: 25px 18px;
+      }
+      
+      .modal-header h2 {
+        font-size: 26px;
+      }
+      
+      .close {
+        font-size: 36px;
+      }
+      
+      #settingsForm label {
+        font-size: 20px;
+      }
+      
+      #settingsForm select,
+      #settingsForm input[type="text"],
+      #settingsForm input[type="number"],
+      #settingsForm textarea {
+        font-size: 18px;
+        padding: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>學校秩序評分系統</h1>
+    
+    <div class="header-actions">
+      <button type="button" class="back-btn" id="backToViewBtn">
+        ← 回查詢系統
+      </button>
+      <button type="button" class="settings-btn" id="settingsBtn">
+        ⚙️ 設定評分資訊
+      </button>
+    </div>
+    
+    <div id="message" class="message"></div>
+    
+    <form id="scoreForm">
+      <!-- 隱藏欄位：從 modal 設定中取得。年級僅學生必填，不可對隱藏欄位使用 HTML required -->
+      <input type="hidden" id="evaluatorGrade" name="evaluatorGrade">
+      <input type="hidden" id="evaluatorType" name="evaluatorType" required>
+      <input type="hidden" id="timeSlot" name="timeSlot" required>
+      
+      <div class="form-group">
+        <label for="evaluator">評分人員姓名 *</label>
+        <input type="text" id="evaluator" name="evaluator" placeholder="請輸入姓名" required>
+        <p class="info-text">請先點擊「設定評分資訊」按鈕設定人員類型與評比項目（師長／校安／生輔組不必填年級）</p>
+      </div>
+      
+      <div class="form-group">
+        <label for="classroom">選擇教室 *</label>
+        <select id="classroom" name="classroom" required>
+          <option value="">請先選擇評分人員年級</option>
+        </select>
+        <div id="gradeInfo" class="grade-info" style="display: none;"></div>
+        <p class="info-text">學生只看本年級班級；師長、校安、巡堂、生輔組可選全部班級。</p>
+      </div>
+      
+      <input type="hidden" id="area" name="area" value="教室">
+      
+      <div id="napSection" class="photo-section">
+        <label>午休評分（12:40–13:10）</label>
+        <p class="info-text">加分項 A／B 擇一；扣分項可複選。評分原則：關燈、不走動、不交談、不群聚。</p>
+        <label class="check-row"><input type="radio" name="napBonus" id="itemA" value="A"> A 全班午睡　加 5 分</label>
+        <label class="check-row"><input type="radio" name="napBonus" id="itemB" value="B"> B 安靜休息　加 3 分</label>
+        <label class="check-row"><input type="radio" name="napBonus" id="itemNone" value="" checked> 不加分</label>
+        <label class="check-row"><input type="checkbox" id="itemC"> C 未關燈　扣 3 分</label>
+        <div class="check-row">
+          <label for="itemD">D 任意走動（1 人扣 1 分）</label>
+          <input type="number" id="itemD" min="0" value="0" step="1">
+        </div>
+        <div class="check-row">
+          <label for="itemE">E 群聚 2 人以上（1 群扣 1 分）</label>
+          <input type="number" id="itemE" min="0" value="0" step="1">
+        </div>
+        <div class="check-row">
+          <label for="itemF">F 吵鬧、交談影響他人（1 群扣 1 分）</label>
+          <input type="number" id="itemF" min="0" value="0" step="1">
+        </div>
+        <div class="check-row">
+          <label for="itemG">G 其他行為（斟酌扣 1–3 分，請填文字說明）</label>
+          <input type="number" id="itemG" min="0" max="3" value="0" step="1">
+        </div>
+      </div>
+      
+      <div id="otherCategorySection" class="form-group" style="display: none;">
+        <label for="directDeduction">扣分</label>
+        <input type="number" id="directDeduction" name="directDeduction" min="0" value="0" step="0.5">
+        <p class="info-text">重要集會、課間巡堂或其他校規，請填加扣分並在備註說明。</p>
+        <label for="bonus" style="margin-top: 12px;">加分</label>
+        <input type="number" id="bonus" name="bonus" min="0" value="0" step="0.5">
+      </div>
+      
+      <div class="form-group">
+        <label for="notes">備註／文字說明</label>
+        <textarea id="notes" name="notes" rows="3" placeholder="G 項或其他行為請寫說明..."></textarea>
+      </div>
+      
+      <div class="score-summary bonus">
+        <strong>總扣分：<span id="totalDeduction">0</span> 分</strong>
+      </div>
+      
+      <div class="score-summary bonus">
+        <strong>加分：<span id="totalBonus">0</span> 分</strong>
+      </div>
+      
+      <div class="score-summary total">
+        <strong>總分（加分-扣分）：<span id="totalScore">0</span> 分</strong>
+        <p class="info-text" style="margin-top: 5px;">正數表示加分，負數表示扣分</p>
+      </div>
+      
+      <button type="submit" class="submit-btn" id="submitBtn">提交評分</button>
+    </form>
+  </div>
+
+  <!-- 設定 Modal -->
+  <div id="settingsModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>設定評分資訊</h2>
+        <span class="close" id="closeModal">&times;</span>
+      </div>
+      <form id="settingsForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="modalEvaluatorGrade" id="modalEvaluatorGradeLabel">評分人員年級 <span id="gradeRequired">*</span></label>
+            <select id="modalEvaluatorGrade" name="modalEvaluatorGrade">
+              <option value="">請選擇評分人員年級</option>
+            </select>
+            <p class="info-text">學生請選本年級；師長／校安／巡堂／生輔組不必選</p>
+          </div>
+          
+          <div class="form-group">
+            <label for="modalEvaluatorType">評分人員類型 *</label>
+            <select id="modalEvaluatorType" name="modalEvaluatorType" required>
+              <option value="">請選擇類型</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="modalEvaluator">評分人員姓名 *</label>
+          <input type="text" id="modalEvaluator" name="modalEvaluator" placeholder="請輸入姓名" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="modalTimeSlot">評比項目 *</label>
+          <select id="modalTimeSlot" name="modalTimeSlot" required>
+            <option value="">請選擇評比項目</option>
+          </select>
+        </div>
+        <input type="hidden" id="modalArea" name="modalArea" value="教室">
+        
+        <div class="modal-footer">
+          <button type="button" class="modal-btn cancel" id="cancelSettings">取消</button>
+          <button type="submit" class="modal-btn save" id="saveSettings">儲存設定</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/config-order.js"></script>
+  <script src="js/api.js"></script>
+  <script>
+    // 從查詢頁驗證後帶入的 loginType（GitHub 靜態頁）
+    var serverLoginType = (function() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var fromUrl = params.get('loginType') || '';
+        var loginKey = (window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE';
+        var authKey = (window.APP_CONFIG && window.APP_CONFIG.AUTH_STORAGE_KEY) || 'SCHOOL_SCORE_AUTH';
+        var fromSession = sessionStorage.getItem(loginKey) || '';
+        var auth = sessionStorage.getItem(authKey) || '';
+        if (!auth) {
+          window.location.replace('order.html');
+          return '';
+        }
+        return fromUrl || fromSession;
+      } catch (e) {
+        return '';
+      }
+    })();
+    
+    let photos = []; // 儲存照片的 base64 字串陣列
+    let allClassrooms = []; // 儲存所有教室資料
+    let currentClassrooms = []; // 儲存當前載入的教室清單（包含順序資訊）
+    let isStudentLogin = false; // 標記是否為學生登入
+    let isTeacherLogin = false; // 標記是否為老師登入
+    let isAdminLogin = false; // 標記是否為管理員登入
+    
+    // 根據伺服器端傳來的 loginType 設定標記
+    if (serverLoginType === 'student') {
+      isStudentLogin = true;
+      isTeacherLogin = false;
+      isAdminLogin = false;
+    } else if (serverLoginType === 'teacher') {
+      isStudentLogin = false;
+      isTeacherLogin = true;
+      isAdminLogin = false;
+    } else if (serverLoginType === 'admin') {
+      isStudentLogin = false;
+      isTeacherLogin = false;
+      isAdminLogin = true;
+    }
+    
+    // 年級是否必填：僅學生必須；老師／生輔組不必填
+    function isEvaluatorGradeRequired(evaluatorType) {
+      if (isTeacherLogin || isAdminLogin) {
+        return false;
+      }
+      const type = (evaluatorType || '').trim();
+      if (type && (type.includes('師長') || type.includes('老師') || type.includes('教師') || type.includes('巡堂') || type.includes('校安') || type.includes('生輔') || type.includes('校長'))) {
+        return false;
+      }
+      return true;
+    }
+    
+    // localStorage 鍵名
+    const STORAGE_KEYS = {
+      EVALUATOR_GRADE: 'orderEvaluatorGrade',
+      EVALUATOR_TYPE: 'orderEvaluatorType',
+      EVALUATOR: 'orderEvaluator',
+      AREA: 'orderArea',
+      TIME_SLOT: 'orderTimeSlot'
+    };
+    
+    // 儲存表單資料到 localStorage
+    function saveFormData() {
+      localStorage.setItem(STORAGE_KEYS.EVALUATOR_GRADE, document.getElementById('evaluatorGrade').value);
+      localStorage.setItem(STORAGE_KEYS.EVALUATOR_TYPE, document.getElementById('evaluatorType').value);
+      localStorage.setItem(STORAGE_KEYS.EVALUATOR, document.getElementById('evaluator').value);
+      localStorage.setItem(STORAGE_KEYS.AREA, document.getElementById('area').value);
+      localStorage.setItem(STORAGE_KEYS.TIME_SLOT, document.getElementById('timeSlot').value);
+    }
+    
+    // 從 localStorage 讀取表單資料
+    function loadFormData() {
+      const savedGrade = localStorage.getItem(STORAGE_KEYS.EVALUATOR_GRADE);
+      const savedType = localStorage.getItem(STORAGE_KEYS.EVALUATOR_TYPE);
+      const savedEvaluator = localStorage.getItem(STORAGE_KEYS.EVALUATOR);
+      const savedArea = localStorage.getItem(STORAGE_KEYS.AREA);
+      const savedTimeSlot = localStorage.getItem(STORAGE_KEYS.TIME_SLOT);
+      
+      // 等待選項載入完成後再填入
+      setTimeout(function() {
+        if (savedType) {
+          document.getElementById('evaluatorType').value = savedType;
+        }
+        // 老師／生輔組不還原年級，改載入全部教室；學生才還原年級並過濾教室
+        if (isEvaluatorGradeRequired(savedType) && savedGrade) {
+          document.getElementById('evaluatorGrade').value = savedGrade;
+          loadClassrooms(savedGrade);
+        } else if (!isEvaluatorGradeRequired(savedType)) {
+          document.getElementById('evaluatorGrade').value = '';
+          const modalGrade = document.getElementById('modalEvaluatorGrade');
+          if (modalGrade) modalGrade.value = '';
+          loadAllClassrooms();
+        }
+        if (savedEvaluator) {
+          document.getElementById('evaluator').value = savedEvaluator;
+        }
+        if (savedArea) {
+          document.getElementById('area').value = savedArea;
+        }
+        if (savedTimeSlot) {
+          document.getElementById('timeSlot').value = savedTimeSlot;
+        }
+        updateGradeFieldVisibility(savedType || document.getElementById('evaluatorType').value);
+        toggleCategorySections();
+      }, 500); // 延遲 500ms 確保選項已載入
+    }
+    
+    // 根據評分人員類型更新評分人員年級欄位的顯示
+    function updateGradeFieldVisibility(evaluatorType) {
+      const gradeGroup = document.querySelector('#settingsForm .form-row .form-group:first-child');
+      const gradeSelect = document.getElementById('modalEvaluatorGrade');
+      const gradeRequired = document.getElementById('gradeRequired');
+      const hiddenGrade = document.getElementById('evaluatorGrade');
+      const bonusInput = document.getElementById('bonus');
+      const bonusInfoText = document.querySelector('#bonus') ? document.querySelector('#bonus').nextElementSibling : null;
+      
+      // 學生必須選年級；老師／生輔組隱藏且不必填
+      const gradeNeeded = isEvaluatorGradeRequired(evaluatorType);
+      
+      if (!gradeNeeded) {
+        if (gradeGroup) gradeGroup.style.display = 'none';
+        if (gradeSelect) {
+          gradeSelect.removeAttribute('required');
+          gradeSelect.value = '';
+        }
+        if (hiddenGrade) hiddenGrade.removeAttribute('required');
+        if (gradeRequired) gradeRequired.style.display = 'none';
+      } else {
+        if (gradeGroup) gradeGroup.style.display = 'block';
+        if (gradeSelect) gradeSelect.setAttribute('required', 'required');
+        if (hiddenGrade) hiddenGrade.removeAttribute('required');
+        if (gradeRequired) gradeRequired.style.display = 'inline';
+      }
+      toggleCategorySections();
+    }
+    
+    // 頁面載入時初始化
+    window.onload = function() {
+      // 先檢查登入類型（需要在載入資料前設定 isStudentLogin）
+      checkLoginTypeFirst();
+      loadInitialData();
+      setupEventListeners();
+      // 載入已儲存的表單資料
+      loadFormData();
+      // 再次檢查並設定學生身份（在資料載入後）
+      checkLoginType();
+      toggleCategorySections();
+    };
+    
+    // 先檢查登入類型（只設定標記，不進行其他操作）
+    function checkLoginTypeFirst() {
+      try {
+        // 優先使用伺服器端傳來的 loginType
+        if (serverLoginType === 'student') {
+          isStudentLogin = true;
+          isTeacherLogin = false;
+          isAdminLogin = false;
+          return;
+        } else if (serverLoginType === 'teacher') {
+          isStudentLogin = false;
+          isTeacherLogin = true;
+          isAdminLogin = false;
+          return;
+        } else if (serverLoginType === 'admin') {
+          isStudentLogin = false;
+          isTeacherLogin = false;
+          isAdminLogin = true;
+          return;
+        }
+        
+        // 如果伺服器端沒有，則從 URL 參數讀取
+        const urlParams = new URLSearchParams(window.location.search);
+        const loginType = urlParams.get('loginType');
+        if (loginType === 'student') {
+          isStudentLogin = true;
+          isTeacherLogin = false;
+          isAdminLogin = false;
+        } else if (loginType === 'teacher') {
+          isStudentLogin = false;
+          isTeacherLogin = true;
+          isAdminLogin = false;
+        } else if (loginType === 'admin') {
+          isStudentLogin = false;
+          isTeacherLogin = false;
+          isAdminLogin = true;
+        } else {
+          isStudentLogin = false;
+          isTeacherLogin = false;
+          isAdminLogin = false;
+        }
+      } catch (error) {
+        console.error('檢查登入類型時發生錯誤：', error);
+        isStudentLogin = false;
+        isTeacherLogin = false;
+        isAdminLogin = false;
+      }
+    }
+    
+    // 檢查登入類型並自動設定
+    function checkLoginType() {
+      try {
+        // 優先使用伺服器端傳來的 loginType
+        let loginType = serverLoginType;
+        
+        // 如果伺服器端沒有，則從 URL 參數讀取
+        if (!loginType || loginType === '') {
+          const urlParams = new URLSearchParams(window.location.search);
+          loginType = urlParams.get('loginType');
+        }
+        
+        if (loginType === 'student') {
+          // 標記為學生登入
+          isStudentLogin = true;
+          isTeacherLogin = false;
+          
+          // 學生登入，自動設定評分人員類型為「風紀股長」
+          // 等待選項載入完成後再設定
+          setTimeout(function() {
+            // 先過濾選項，只保留學生相關選項
+            filterEvaluatorTypesForStudent();
+            
+            // 隱藏欄位（主表單中的隱藏 input）
+            const hiddenEvaluatorType = document.getElementById('evaluatorType');
+            // Modal 中的選項
+            const modalEvaluatorTypeSelect = document.getElementById('modalEvaluatorType');
+            
+            let studentTypeValue = '';
+            
+            // 先從 modal 選項中查找「風紀股長」或「衛生服務隊」
+            if (modalEvaluatorTypeSelect) {
+              for (let i = 0; i < modalEvaluatorTypeSelect.options.length; i++) {
+                const optionText = modalEvaluatorTypeSelect.options[i].textContent;
+                if (optionText.includes('風紀股長')) {
+                  studentTypeValue = modalEvaluatorTypeSelect.options[i].value;
+                  modalEvaluatorTypeSelect.value = studentTypeValue;
+                  break;
+                } else if (optionText.includes('衛生服務隊') && !studentTypeValue) {
+                  // 如果沒有「風紀股長」，使用「衛生服務隊」
+                  studentTypeValue = modalEvaluatorTypeSelect.options[i].value;
+                  modalEvaluatorTypeSelect.value = studentTypeValue;
+                }
+              }
+            }
+            
+            // 設定隱藏欄位
+            if (hiddenEvaluatorType && studentTypeValue) {
+              hiddenEvaluatorType.value = studentTypeValue;
+              
+              // 儲存設定
+              saveFormData();
+              
+              // 根據評分人員類型更新年級欄位顯示
+              updateGradeFieldVisibility(studentTypeValue);
+              
+              // 顯示提示訊息
+              showMessage('已自動設定為學生身份（' + (studentTypeValue.includes('風紀股長') ? '風紀股長' : '衛生服務隊') + '）', 'success');
+            }
+          }, 1500); // 延遲 1.5 秒確保選項已載入
+        } else if (loginType === 'teacher') {
+          // 標記為老師登入
+          isStudentLogin = false;
+          isTeacherLogin = true;
+          isAdminLogin = false;
+          
+          // 老師登入：年級非必填，可評所有教室
+          setTimeout(function() {
+            filterEvaluatorTypesForStudent();
+            const currentType = document.getElementById('evaluatorType').value || '';
+            updateGradeFieldVisibility(currentType);
+            if (!isEvaluatorGradeRequired(currentType)) {
+              document.getElementById('evaluatorGrade').value = '';
+              loadAllClassrooms();
+            }
+          }, 1500);
+        } else if (loginType === 'admin') {
+          // 標記為管理員登入
+          isStudentLogin = false;
+          isTeacherLogin = false;
+          isAdminLogin = true;
+          
+          // 生輔組登入：年級非必填，可評所有教室
+          setTimeout(function() {
+            filterEvaluatorTypesForStudent();
+            const currentType = document.getElementById('evaluatorType').value || '';
+            updateGradeFieldVisibility(currentType);
+            if (!isEvaluatorGradeRequired(currentType)) {
+              document.getElementById('evaluatorGrade').value = '';
+              loadAllClassrooms();
+            }
+          }, 1500);
+        }
+      } catch (error) {
+        console.error('檢查登入類型時發生錯誤：', error);
+      }
+    }
+    
+    // 過濾評分人員類型選項（根據登入類型）
+    function filterEvaluatorTypesForStudent() {
+      const modalEvaluatorTypeSelect = document.getElementById('modalEvaluatorType');
+      
+      if (!modalEvaluatorTypeSelect) {
+        return;
+      }
+      
+      // 再次檢查登入類型，確保標記正確
+      try {
+        // 優先使用伺服器端傳來的 loginType
+        if (serverLoginType === 'student') {
+          isStudentLogin = true;
+          isTeacherLogin = false;
+          isAdminLogin = false;
+        } else if (serverLoginType === 'teacher') {
+          isStudentLogin = false;
+          isTeacherLogin = true;
+          isAdminLogin = false;
+        } else if (serverLoginType === 'admin') {
+          isStudentLogin = false;
+          isTeacherLogin = false;
+          isAdminLogin = true;
+        } else {
+          // 如果伺服器端沒有，則從 URL 參數讀取
+          const urlParams = new URLSearchParams(window.location.search);
+          const loginType = urlParams.get('loginType');
+          if (loginType === 'student') {
+            isStudentLogin = true;
+            isTeacherLogin = false;
+            isAdminLogin = false;
+          } else if (loginType === 'teacher') {
+            isStudentLogin = false;
+            isTeacherLogin = true;
+            isAdminLogin = false;
+          } else if (loginType === 'admin') {
+            isStudentLogin = false;
+            isTeacherLogin = false;
+            isAdminLogin = true;
+          }
+        }
+      } catch (error) {
+        console.error('檢查登入類型時發生錯誤：', error);
+      }
+      
+      // 儲存當前選中的值
+      const currentValue = modalEvaluatorTypeSelect.value;
+      
+      // 先收集所有現有選項的值和文字
+      const allOptions = [];
+      for (let i = 0; i < modalEvaluatorTypeSelect.options.length; i++) {
+        allOptions.push({
+          value: modalEvaluatorTypeSelect.options[i].value,
+          text: modalEvaluatorTypeSelect.options[i].textContent
+        });
+      }
+      
+      // 清空選項（保留第一個預設選項）
+      modalEvaluatorTypeSelect.innerHTML = '<option value="">請選擇類型</option>';
+      
+      // 根據登入類型過濾選項
+      if (isStudentLogin) {
+        // 學生登入：只保留「風紀股長」和「衛生服務隊」
+        allOptions.forEach(function(option) {
+          if (option.text.includes('風紀股長') || option.text.includes('衛生服務隊')) {
+            const newOption = document.createElement('option');
+            newOption.value = option.value;
+            newOption.textContent = option.text;
+            modalEvaluatorTypeSelect.appendChild(newOption);
+          }
+        });
+        
+        // 如果之前選中的值是學生類型，恢復選中
+        if (currentValue && (currentValue.includes('風紀股長') || currentValue.includes('衛生服務隊'))) {
+          modalEvaluatorTypeSelect.value = currentValue;
+        }
+      } else if (isTeacherLogin) {
+        // 老師登入：只保留「評分教師」和「巡堂老師」
+        allOptions.forEach(function(option) {
+          if (option.text.includes('師長') || option.text.includes('巡堂') || option.text.includes('校安')) {
+            const newOption = document.createElement('option');
+            newOption.value = option.value;
+            newOption.textContent = option.text;
+            modalEvaluatorTypeSelect.appendChild(newOption);
+          }
+        });
+        
+        // 如果之前選中的值是老師類型，恢復選中
+        if (currentValue && (currentValue.includes('師長') || currentValue.includes('巡堂') || currentValue.includes('校安'))) {
+          modalEvaluatorTypeSelect.value = currentValue;
+        }
+      } else if (isAdminLogin) {
+        // 管理員登入：只保留「生輔組」
+        allOptions.forEach(function(option) {
+          if (option.text.includes('生輔組')) {
+            const newOption = document.createElement('option');
+            newOption.value = option.value;
+            newOption.textContent = option.text;
+            modalEvaluatorTypeSelect.appendChild(newOption);
+          }
+        });
+        
+        // 如果之前選中的值是管理員類型，恢復選中
+        if (currentValue && currentValue.includes('生輔組')) {
+          modalEvaluatorTypeSelect.value = currentValue;
+        }
+      }
+      // 如果既不是學生、老師也不是管理員登入，不進行過濾（顯示所有選項）
+    }
+    
+    // 載入初始資料
+    function loadInitialData() {
+      // 載入年級（modal 和隱藏欄位）
+      google.script.run
+        .withSuccessHandler(function(grades) {
+          // Modal
+          const modalSelect = document.getElementById('modalEvaluatorGrade');
+          grades.forEach(function(grade) {
+            const option = document.createElement('option');
+            option.value = grade;
+            option.textContent = grade;
+            modalSelect.appendChild(option);
+          });
+          
+          // 隱藏欄位（主表單中的隱藏 input）
+          const hiddenInput = document.getElementById('evaluatorGrade');
+          
+          // 選項載入完成後，嘗試填入已儲存的值（老師／生輔組不套用年級）
+          const savedGrade = localStorage.getItem(STORAGE_KEYS.EVALUATOR_GRADE);
+          const savedTypeForGrade = localStorage.getItem(STORAGE_KEYS.EVALUATOR_TYPE);
+          if (isEvaluatorGradeRequired(savedTypeForGrade) && savedGrade) {
+            hiddenInput.value = savedGrade;
+            modalSelect.value = savedGrade;
+            loadClassrooms(savedGrade);
+          } else if (!isEvaluatorGradeRequired(savedTypeForGrade)) {
+            hiddenInput.value = '';
+            modalSelect.value = '';
+            loadAllClassrooms();
+          }
+        })
+        .getGrades();
+      
+      document.getElementById('area').value = '教室';
+      document.getElementById('modalArea').value = '教室';
+      
+      // 載入評分時段（modal 和隱藏欄位）
+      google.script.run
+        .withSuccessHandler(function(timeSlots) {
+          // Modal
+          const modalSelect = document.getElementById('modalTimeSlot');
+          timeSlots.forEach(function(slot) {
+            const option = document.createElement('option');
+            option.value = slot;
+            option.textContent = slot;
+            modalSelect.appendChild(option);
+          });
+          
+          // 隱藏欄位（主表單中的隱藏 input）
+          const hiddenInput = document.getElementById('timeSlot');
+          
+          // 選項載入完成後，嘗試填入已儲存的值
+          const savedTimeSlot = localStorage.getItem(STORAGE_KEYS.TIME_SLOT);
+          if (savedTimeSlot) {
+            hiddenInput.value = savedTimeSlot;
+            modalSelect.value = savedTimeSlot;
+          }
+          toggleCategorySections();
+        })
+        .getTimeSlots();
+      
+      // 載入評分人員類型（modal 和隱藏欄位）
+      google.script.run
+        .withSuccessHandler(function(types) {
+          // Modal
+          const modalSelect = document.getElementById('modalEvaluatorType');
+          
+          // 再次檢查登入類型，確保標記正確
+          let shouldFilterForStudent = false;
+          let shouldFilterForTeacher = false;
+          let shouldFilterForAdmin = false;
+          let currentLoginType = '';
+          try {
+            // 優先使用伺服器端傳來的 loginType
+            if (serverLoginType === 'student') {
+              isStudentLogin = true;
+              isTeacherLogin = false;
+              isAdminLogin = false;
+              shouldFilterForStudent = true;
+              currentLoginType = 'student';
+            } else if (serverLoginType === 'teacher') {
+              isStudentLogin = false;
+              isTeacherLogin = true;
+              isAdminLogin = false;
+              shouldFilterForTeacher = true;
+              currentLoginType = 'teacher';
+            } else if (serverLoginType === 'admin') {
+              isStudentLogin = false;
+              isTeacherLogin = false;
+              isAdminLogin = true;
+              shouldFilterForAdmin = true;
+              currentLoginType = 'admin';
+            } else {
+              // 如果伺服器端沒有，則從 URL 參數讀取
+              const urlParams = new URLSearchParams(window.location.search);
+              const loginType = urlParams.get('loginType');
+              if (loginType === 'student') {
+                isStudentLogin = true;
+                isTeacherLogin = false;
+                isAdminLogin = false;
+                shouldFilterForStudent = true;
+                currentLoginType = 'student';
+              } else if (loginType === 'teacher') {
+                isStudentLogin = false;
+                isTeacherLogin = true;
+                isAdminLogin = false;
+                shouldFilterForTeacher = true;
+                currentLoginType = 'teacher';
+              } else if (loginType === 'admin') {
+                isStudentLogin = false;
+                isTeacherLogin = false;
+                isAdminLogin = true;
+                shouldFilterForAdmin = true;
+                currentLoginType = 'admin';
+              } else {
+                isStudentLogin = false;
+                isTeacherLogin = false;
+                isAdminLogin = false;
+              }
+            }
+          } catch (error) {
+            console.error('檢查登入類型時發生錯誤：', error);
+          }
+          
+          // 先清空所有選項（保留第一個預設選項）
+          modalSelect.innerHTML = '<option value="">請選擇類型</option>';
+          
+          // 根據登入類型過濾選項
+          if (shouldFilterForStudent || isStudentLogin) {
+            // 學生登入：只顯示「風紀股長」和「衛生服務隊」
+            types.forEach(function(type) {
+              if (type.includes('風紀股長')) {
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = type;
+                modalSelect.appendChild(option);
+              }
+            });
+          } else if (shouldFilterForTeacher || isTeacherLogin) {
+            // 老師登入：只顯示「評分教師」和「巡堂老師」
+            types.forEach(function(type) {
+              if (type.includes('師長') || type.includes('巡堂') || type.includes('校安')) {
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = type;
+                modalSelect.appendChild(option);
+              }
+            });
+          } else if (shouldFilterForAdmin || isAdminLogin) {
+            // 管理員登入：只顯示「生輔組」
+            types.forEach(function(type) {
+              if (type.includes('生輔組') || type.includes('校長')) {
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = type;
+                modalSelect.appendChild(option);
+              }
+            });
+          } else {
+            // 沒有指定登入類型，顯示所有選項（向後兼容）
+            types.forEach(function(type) {
+              const option = document.createElement('option');
+              option.value = type;
+              option.textContent = type;
+              modalSelect.appendChild(option);
+            });
+          }
+          
+          // 隱藏欄位（主表單中的隱藏 input）
+          const hiddenInput = document.getElementById('evaluatorType');
+          
+          // 選項載入完成後，嘗試填入已儲存的值
+          const savedType = localStorage.getItem(STORAGE_KEYS.EVALUATOR_TYPE);
+          if (savedType) {
+            // 根據登入類型檢查已儲存的類型是否匹配
+            if (isStudentLogin) {
+              if (savedType.includes('風紀股長')) {
+                hiddenInput.value = savedType;
+                modalSelect.value = savedType;
+                updateGradeFieldVisibility(savedType);
+              }
+            } else if (isTeacherLogin) {
+              if (savedType.includes('師長') || savedType.includes('巡堂') || savedType.includes('校安')) {
+                hiddenInput.value = savedType;
+                modalSelect.value = savedType;
+                updateGradeFieldVisibility(savedType);
+              }
+            } else if (isAdminLogin) {
+              if (savedType.includes('生輔組') || savedType.includes('校長')) {
+                hiddenInput.value = savedType;
+                modalSelect.value = savedType;
+                updateGradeFieldVisibility(savedType);
+              }
+            } else {
+              hiddenInput.value = savedType;
+              modalSelect.value = savedType;
+              // 根據已儲存的類型更新評分人員年級欄位的顯示
+              updateGradeFieldVisibility(savedType);
+            }
+          }
+          
+          // 添加事件監聽器：當評分人員類型改變時，更新評分人員年級欄位的顯示
+          modalSelect.addEventListener('change', function() {
+            updateGradeFieldVisibility(this.value);
+          });
+        })
+        .getEvaluatorTypes();
+      
+      // 載入評分人員姓名（主表單和 modal）
+      const savedEvaluator = localStorage.getItem(STORAGE_KEYS.EVALUATOR);
+      if (savedEvaluator) {
+        document.getElementById('evaluator').value = savedEvaluator;
+        document.getElementById('modalEvaluator').value = savedEvaluator;
+      }
+    }
+    
+    // 設定事件監聽器
+    function setupEventListeners() {
+      // 注意：評分人員年級和評分人員類型現在是隱藏欄位，只在 modal 中設定
+      
+      // 評分人員姓名變更時儲存
+      document.getElementById('evaluator').addEventListener('input', function() {
+        saveFormData();
+      });
+      
+      // 評分區域變更時儲存
+      document.getElementById('area').addEventListener('change', function() {
+        saveFormData();
+      });
+      
+      // 注意：評分時段現在是隱藏欄位，只在 modal 中設定
+      
+      ['itemA','itemB','itemNone','itemC','itemD','itemE','itemF','itemG'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', updateTotalScore);
+        if (el) el.addEventListener('input', updateTotalScore);
+      });
+      
+      const notesEl = document.getElementById('notes');
+      if (notesEl) notesEl.addEventListener('input', updateTotalScore);
+      
+      // 直接扣分變更
+      const directEl = document.getElementById('directDeduction');
+      if (directEl) directEl.addEventListener('input', updateTotalScore);
+      
+      // 加分變更
+      const bonusEl = document.getElementById('bonus');
+      if (bonusEl) bonusEl.addEventListener('input', updateTotalScore);
+      
+      // 表單提交
+      document.getElementById('scoreForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        submitScore();
+      });
+      
+      // Modal 相關事件
+      // 打開 modal 按鈕
+      document.getElementById('settingsBtn').addEventListener('click', function() {
+        openSettingsModal();
+      });
+      
+      // 回查詢系統（評分結果查詢頁）
+      const backToViewBtn = document.getElementById('backToViewBtn');
+      if (backToViewBtn) {
+        backToViewBtn.addEventListener('click', function() {
+          goBackToViewScores();
+        });
+      }
+      
+      // 關閉 modal（X 按鈕）
+      document.getElementById('closeModal').addEventListener('click', function() {
+        closeSettingsModal();
+      });
+      
+      // 關閉 modal（取消按鈕）
+      document.getElementById('cancelSettings').addEventListener('click', function() {
+        closeSettingsModal();
+      });
+      
+      // 點擊 modal 外部關閉
+      document.getElementById('settingsModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+          closeSettingsModal();
+        }
+      });
+      
+      // 儲存設定
+      document.getElementById('settingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        saveSettings();
+      });
+    }
+    
+    // 回評分結果查詢頁（GitHub 靜態頁）
+    function goBackToViewScores() {
+      window.location.href = 'order.html';
+    }
+    
+    // 打開設定 modal
+    function openSettingsModal() {
+      const modal = document.getElementById('settingsModal');
+      
+      // 再次檢查登入類型，確保標記正確
+      try {
+        // 優先使用伺服器端傳來的 loginType
+        if (serverLoginType === 'student') {
+          isStudentLogin = true;
+          isTeacherLogin = false;
+          isAdminLogin = false;
+        } else if (serverLoginType === 'teacher') {
+          isStudentLogin = false;
+          isTeacherLogin = true;
+          isAdminLogin = false;
+        } else if (serverLoginType === 'admin') {
+          isStudentLogin = false;
+          isTeacherLogin = false;
+          isAdminLogin = true;
+        } else {
+          // 如果伺服器端沒有，則從 URL 參數讀取
+          const urlParams = new URLSearchParams(window.location.search);
+          const loginType = urlParams.get('loginType');
+          if (loginType === 'student') {
+            isStudentLogin = true;
+            isTeacherLogin = false;
+            isAdminLogin = false;
+          } else if (loginType === 'teacher') {
+            isStudentLogin = false;
+            isTeacherLogin = true;
+            isAdminLogin = false;
+          } else if (loginType === 'admin') {
+            isStudentLogin = false;
+            isTeacherLogin = false;
+            isAdminLogin = true;
+          }
+        }
+      } catch (error) {
+        console.error('檢查登入類型時發生錯誤：', error);
+      }
+      
+      // 如果是學生、老師或管理員登入，過濾評分人員類型選項
+      if (isStudentLogin || isTeacherLogin || isAdminLogin) {
+        // 先過濾選項
+        filterEvaluatorTypesForStudent();
+      }
+      
+      // 從主表單載入當前值到 modal（隱藏欄位和可見欄位）
+      document.getElementById('modalEvaluatorGrade').value = document.getElementById('evaluatorGrade').value || '';
+      document.getElementById('modalEvaluatorType').value = document.getElementById('evaluatorType').value || '';
+      document.getElementById('modalEvaluator').value = document.getElementById('evaluator').value || '';
+      document.getElementById('modalArea').value = document.getElementById('area').value || '';
+      document.getElementById('modalTimeSlot').value = document.getElementById('timeSlot').value || '';
+      
+      // 如果是學生登入，再次確保過濾（防止值設定後選項被恢復）
+      if (isStudentLogin) {
+        // 延遲一點時間確保 DOM 更新完成
+        setTimeout(function() {
+          filterEvaluatorTypesForStudent();
+        }, 100);
+      }
+      
+      // 根據當前的評分人員類型更新評分人員年級欄位的顯示
+      const currentType = document.getElementById('evaluatorType').value || '';
+      updateGradeFieldVisibility(currentType);
+      
+      modal.style.display = 'block';
+    }
+    
+    // 關閉設定 modal
+    function closeSettingsModal() {
+      document.getElementById('settingsModal').style.display = 'none';
+    }
+    
+    // 儲存設定並應用到主表單
+    function saveSettings() {
+      // 從 modal 取得值
+      const grade = document.getElementById('modalEvaluatorGrade').value;
+      const type = document.getElementById('modalEvaluatorType').value;
+      const evaluator = document.getElementById('modalEvaluator').value;
+      const area = document.getElementById('modalArea').value;
+      const timeSlot = document.getElementById('modalTimeSlot').value;
+      
+      const gradeNeeded = isEvaluatorGradeRequired(type);
+      
+      // 驗證必填欄位（老師或生輔組不需要評分人員年級）
+      if (!type || !evaluator || !area || !timeSlot) {
+        showMessage('請填寫所有必填欄位', 'error');
+        return;
+      }
+      
+      if (gradeNeeded && !grade) {
+        showMessage('請選擇評分人員年級', 'error');
+        return;
+      }
+      
+      // 應用到主表單（老師／生輔組年級留空）
+      document.getElementById('evaluatorGrade').value = gradeNeeded ? (grade || '') : '';
+      document.getElementById('evaluatorType').value = type;
+      document.getElementById('evaluator').value = evaluator;
+      document.getElementById('area').value = area || '教室';
+      document.getElementById('timeSlot').value = timeSlot;
+      toggleCategorySections();
+      
+      // 學生依年級過濾教室；老師或生輔組載入全部教室
+      if (gradeNeeded && grade) {
+        loadClassrooms(grade);
+      } else if (!gradeNeeded) {
+        loadAllClassrooms();
+      }
+      
+      // 儲存到 localStorage
+      localStorage.setItem(STORAGE_KEYS.EVALUATOR_GRADE, gradeNeeded ? grade : '');
+      localStorage.setItem(STORAGE_KEYS.EVALUATOR_TYPE, type);
+      localStorage.setItem(STORAGE_KEYS.EVALUATOR, evaluator);
+      localStorage.setItem(STORAGE_KEYS.AREA, area);
+      localStorage.setItem(STORAGE_KEYS.TIME_SLOT, timeSlot);
+      
+      // 關閉 modal
+      closeSettingsModal();
+      
+      // 顯示成功訊息
+      showMessage('設定已儲存並應用到表單', 'success');
+    }
+    
+    // 載入所有教室（用於老師）
+    function loadAllClassrooms() {
+      const select = document.getElementById('classroom');
+      const gradeInfo = document.getElementById('gradeInfo');
+      
+      gradeInfo.textContent = '老師或生輔組可以選擇所有年級的教室';
+      gradeInfo.style.display = 'block';
+      
+      google.script.run
+        .withSuccessHandler(function(classrooms) {
+          select.innerHTML = '<option value="">請選擇教室</option>';
+          if (classrooms.length === 0) {
+            select.innerHTML = '<option value="">暫無教室資料</option>';
+            showMessage('目前沒有教室資料，請檢查「教室清單」工作表', 'error');
+          } else {
+            currentClassrooms = classrooms;
+            classrooms.forEach(function(room) {
+              const option = document.createElement('option');
+              // 教室編號可能是樓層（如仁愛五樓）會重複，改以教室名稱當唯一值
+              option.value = room.name;
+              option.textContent = room.name + ' (' + room.id + ')';
+              option.setAttribute('data-id', room.id);
+              option.setAttribute('data-order', room.order);
+              select.appendChild(option);
+            });
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('載入教室清單失敗：' + error.message, 'error');
+        })
+        .getAllClassrooms();
+    }
+    
+    // 載入教室清單（根據評分人員年級過濾）
+    function loadClassrooms(grade) {
+      const select = document.getElementById('classroom');
+      const gradeInfo = document.getElementById('gradeInfo');
+      
+      if (!grade) {
+        select.innerHTML = '<option value="">請先選擇評分人員年級</option>';
+        gradeInfo.style.display = 'none';
+        return;
+      }
+      
+      // 根據年級評比規則顯示提示
+      const gradeMapping = {
+        '一年級': '三年級',
+        '二年級': '一年級',
+        '三年級': '二年級'
+      };
+      const evaluatedGrade = gradeMapping[grade] || '';
+      gradeInfo.textContent = grade + ' 評比 ' + evaluatedGrade;
+      gradeInfo.style.display = 'block';
+      
+      google.script.run
+        .withSuccessHandler(function(classrooms) {
+          select.innerHTML = '<option value="">請選擇教室</option>';
+          if (classrooms.length === 0) {
+            // 根據年級評比規則顯示提示
+            const gradeMapping = {
+              '一年級': '三年級',
+              '二年級': '一年級',
+              '三年級': '二年級'
+            };
+            const evaluatedGrade = gradeMapping[grade] || '';
+            select.innerHTML = '<option value="">該年級暫無教室資料（' + grade + ' 應評比 ' + evaluatedGrade + ' 的教室）</option>';
+            showMessage('提示：' + grade + ' 應評比 ' + evaluatedGrade + ' 的教室。請確認「教室清單」的教室名稱可判斷年級（例如「資訊一忠」為一年級、「資訊二孝」為二年級）。', 'error');
+          } else {
+            // 顯示除錯資訊：檢查教室年級
+            const gradeMapping = {
+              '一年級': '三年級',
+              '二年級': '一年級',
+              '三年級': '二年級'
+            };
+            const expectedGrade = gradeMapping[grade] || '';
+            const actualGrades = [...new Set(classrooms.map(r => r.grade))];
+            
+            // 建立年級格式對照表（用於檢查年級是否匹配）
+            const gradeEquivalenceMap = {
+              '一年級': ['一年級', '1年級', '1'],
+              '二年級': ['二年級', '2年級', '2'],
+              '三年級': ['三年級', '3年級', '3']
+            };
+            const expectedGradeVariants = gradeEquivalenceMap[expectedGrade] || [expectedGrade];
+            
+            // 檢查實際顯示的年級是否與預期匹配（支援多種格式）
+            const isGradeMatched = actualGrades.some(actualGrade => 
+              expectedGradeVariants.includes(actualGrade.trim())
+            );
+            
+            // 如果顯示的年級與預期不符，顯示警告
+            if (expectedGrade && actualGrades.length > 0 && !isGradeMatched) {
+              console.warn('警告：預期顯示 ' + expectedGrade + ' 的教室，但實際顯示：' + actualGrades.join('、'));
+              showMessage('警告：預期顯示 ' + expectedGrade + ' 的教室，但實際顯示 ' + actualGrades.join('、') + ' 的教室。請檢查「教室清單」工作表中的年級欄位是否正確。', 'error');
+            }
+            
+            // 儲存當前教室清單（包含順序資訊）
+            currentClassrooms = classrooms;
+            
+            classrooms.forEach(function(room) {
+              const option = document.createElement('option');
+              // 教室編號可能是樓層（如仁愛五樓）會重複，改以教室名稱當唯一值
+              option.value = room.name;
+              option.textContent = room.name + ' (' + room.id + ')';
+              option.setAttribute('data-id', room.id);
+              option.setAttribute('data-order', room.order);
+              select.appendChild(option);
+            });
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('載入教室清單失敗：' + error.message, 'error');
+        })
+        .getClassrooms(grade);
+    }
+    
+    // 壓縮圖片（優化上傳速度）
+    function compressImage(file, maxWidth, maxHeight, quality) {
+      return new Promise(function(resolve, reject) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const img = new Image();
+          img.onload = function() {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // 計算縮放比例，保持寬高比
+            if (width > height) {
+              if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+              }
+            } else {
+              if (height > maxHeight) {
+                width = (width * maxHeight) / height;
+                height = maxHeight;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // 轉換為 base64，使用指定的壓縮品質
+            const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+            resolve(compressedBase64);
+          };
+          img.onerror = function() {
+            reject(new Error('圖片載入失敗'));
+          };
+          img.src = e.target.result;
+        };
+        reader.onerror = function() {
+          reject(new Error('檔案讀取失敗'));
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    
+    // 處理檔案選擇（添加圖片壓縮）
+    function handleFileSelect(files) {
+      Array.from(files).forEach(function(file) {
+        if (file.type.startsWith('image/')) {
+          // 壓縮成約 400px、品質 32%，評分紀錄已夠看，上傳也較快
+          compressImage(file, 400, 400, 0.32)
+            .then(function(compressedBase64) {
+              photos.push(compressedBase64);
+              updatePhotoPreview();
+              updateTotalScore();
+              
+              // 計算壓縮後的大小
+              const originalSize = file.size;
+              const compressedSize = compressedBase64.length * 0.75; // base64 大約是原始大小的 133%
+              const compressionRatio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+              console.log('圖片壓縮完成：原始大小 ' + (originalSize / 1024).toFixed(2) + ' KB，壓縮後 ' + (compressedSize / 1024).toFixed(2) + ' KB，節省 ' + compressionRatio + '%');
+            })
+            .catch(function(error) {
+              // 如果壓縮失敗，使用原始圖片
+              const reader = new FileReader();
+              reader.onload = function(e) {
+                photos.push(e.target.result);
+                updatePhotoPreview();
+                updateTotalScore();
+              };
+              reader.readAsDataURL(file);
+            });
+        }
+      });
+    }
+    
+    // 更新照片預覽
+    function updatePhotoPreview() {
+      const preview = document.getElementById('photoPreview');
+      preview.innerHTML = '';
+      
+      photos.forEach(function(photo, index) {
+        const div = document.createElement('div');
+        div.className = 'photo-item';
+        
+        const img = document.createElement('img');
+        img.src = photo;
+        img.alt = '扣分照片 ' + (index + 1);
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'remove-btn';
+        removeBtn.textContent = '×';
+        removeBtn.onclick = function() {
+          photos.splice(index, 1);
+          updatePhotoPreview();
+          updateTotalScore();
+        };
+        
+        div.appendChild(img);
+        div.appendChild(removeBtn);
+        preview.appendChild(div);
+      });
+      
+      document.getElementById('photoDeduction').textContent = photos.length;
+    }
+    
+    function isNapCategory() {
+      const slot = (document.getElementById('timeSlot').value || '');
+      return slot.indexOf('午休') >= 0 || slot === '';
+    }
+    
+    function toggleCategorySections() {
+      const nap = document.getElementById('napSection');
+      const other = document.getElementById('otherCategorySection');
+      if (!nap || !other) return;
+      if (isNapCategory()) {
+        nap.style.display = 'block';
+        other.style.display = 'none';
+      } else {
+        nap.style.display = 'none';
+        other.style.display = 'block';
+      }
+      updateTotalScore();
+    }
+    
+    function collectNapItems() {
+      return {
+        A: !!(document.getElementById('itemA') && document.getElementById('itemA').checked),
+        B: !!(document.getElementById('itemB') && document.getElementById('itemB').checked),
+        C: !!(document.getElementById('itemC') && document.getElementById('itemC').checked),
+        D: parseInt((document.getElementById('itemD') && document.getElementById('itemD').value) || '0', 10) || 0,
+        E: parseInt((document.getElementById('itemE') && document.getElementById('itemE').value) || '0', 10) || 0,
+        F: parseInt((document.getElementById('itemF') && document.getElementById('itemF').value) || '0', 10) || 0,
+        G: parseInt((document.getElementById('itemG') && document.getElementById('itemG').value) || '0', 10) || 0
+      };
+    }
+    
+    function computeNapScore(items) {
+      let bonus = 0;
+      let deduction = 0;
+      if (items.A) bonus += 5;
+      else if (items.B) bonus += 3;
+      if (items.C) deduction += 3;
+      deduction += items.D + items.E + items.F + items.G;
+      return { bonus: bonus, deduction: deduction, total: bonus - deduction };
+    }
+    
+    function updateTotalScore() {
+      let bonus = 0;
+      let deduction = 0;
+      if (isNapCategory()) {
+        const score = computeNapScore(collectNapItems());
+        bonus = score.bonus;
+        deduction = score.deduction;
+      } else {
+        deduction = parseFloat(document.getElementById('directDeduction').value) || 0;
+        bonus = parseFloat(document.getElementById('bonus').value) || 0;
+      }
+      document.getElementById('totalDeduction').textContent = deduction;
+      document.getElementById('totalBonus').textContent = bonus;
+      document.getElementById('totalScore').textContent = bonus - deduction;
+    }
+    
+    function submitScore() {
+      const form = document.getElementById('scoreForm');
+      const submitBtn = document.getElementById('submitBtn');
+      const evaluatorGrade = document.getElementById('evaluatorGrade').value;
+      const evaluatorType = document.getElementById('evaluatorType').value;
+      const timeSlot = document.getElementById('timeSlot').value;
+      
+      if (!evaluatorType || !timeSlot) {
+        showMessage('請先點擊「設定評分資訊」按鈕設定評分人員類型和評比項目', 'error');
+        return;
+      }
+      if (isEvaluatorGradeRequired(evaluatorType) && !evaluatorGrade) {
+        showMessage('請先點擊「設定評分資訊」按鈕設定評分人員年級', 'error');
+        return;
+      }
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+      
+      const items = collectNapItems();
+      const notes = (document.getElementById('notes').value || '').trim();
+      if (isNapCategory() && items.G > 0 && !notes) {
+        showMessage('勾選 G 其他行為時請填寫文字說明', 'error');
+        return;
+      }
+      
+      const classroomSelect = document.getElementById('classroom');
+      const selectedOption = classroomSelect.options[classroomSelect.selectedIndex];
+      const classroomName = classroomSelect.value;
+      const classroomId = (selectedOption && selectedOption.getAttribute('data-id')) || '';
+      
+      let bonus = 0;
+      let deduction = 0;
+      if (isNapCategory()) {
+        const score = computeNapScore(items);
+        bonus = score.bonus;
+        deduction = score.deduction;
+      } else {
+        deduction = parseFloat(document.getElementById('directDeduction').value) || 0;
+        bonus = parseFloat(document.getElementById('bonus').value) || 0;
+      }
+      
+      const dataToSubmit = {
+        evaluatorGrade: evaluatorGrade,
+        evaluatorType: evaluatorType,
+        evaluator: document.getElementById('evaluator').value,
+        classroomId: classroomId,
+        classroomName: classroomName,
+        area: document.getElementById('area').value || '教室',
+        timeSlot: timeSlot,
+        items: isNapCategory() ? items : {},
+        directDeduction: deduction,
+        bonus: bonus,
+        notes: notes
+      };
+      
+      submitBtn.disabled = true;
+      submitBtn.textContent = '提交評分資料中...';
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            result.message = '評分記錄已成功儲存！';
+            handleSubmitSuccess(result, classroomName);
+          } else {
+            showMessage(result.message, 'error');
+            submitBtn.disabled = false;
+            submitBtn.textContent = '提交評分';
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('提交失敗：' + (error.message || error.toString()), 'error');
+          submitBtn.disabled = false;
+          submitBtn.textContent = '提交評分';
+        })
+        .saveScore(dataToSubmit);
+    }
+    
+    // 處理提交成功
+    function handleSubmitSuccess(result, classroomName) {
+      showMessage(message, 'success');
+      
+      // 自動切換到下一個教室（按教室名稱區分，因編號可能是樓層而重複）
+      const classroomSelect = document.getElementById('classroom');
+      const currentClassroomName = classroomName;
+      
+      if (currentClassrooms.length > 0) {
+        let currentIndex = -1;
+        for (let i = 0; i < currentClassrooms.length; i++) {
+          if (currentClassrooms[i].name === currentClassroomName) {
+            currentIndex = i;
+            break;
+          }
+        }
+        
+        if (currentIndex >= 0 && currentIndex < currentClassrooms.length - 1) {
+          const nextClassroom = currentClassrooms[currentIndex + 1];
+          classroomSelect.value = nextClassroom.name;
+        } else if (currentIndex >= 0 && currentIndex === currentClassrooms.length - 1) {
+          const firstClassroom = currentClassrooms[0];
+          classroomSelect.value = firstClassroom.name;
+        } else {
+          if (currentClassrooms.length > 0) {
+            classroomSelect.value = currentClassrooms[0].name;
+          }
+        }
+      }
+      
+      if (document.getElementById('itemNone')) document.getElementById('itemNone').checked = true;
+      if (document.getElementById('itemC')) document.getElementById('itemC').checked = false;
+      ['itemD','itemE','itemF','itemG'].forEach(function(id) {
+        if (document.getElementById(id)) document.getElementById(id).value = '0';
+      });
+      if (document.getElementById('directDeduction')) document.getElementById('directDeduction').value = '0';
+      if (document.getElementById('bonus')) document.getElementById('bonus').value = '0';
+      document.getElementById('notes').value = '';
+      updateTotalScore();
+      // 保留評分人員年級、評分人員類型、評分人員姓名、評分區域、評分時段（已自動儲存）
+      
+      submitBtn.disabled = false;
+      submitBtn.textContent = '提交評分';
+    }
+    
+    // 顯示訊息
+    function showMessage(message, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.textContent = message;
+      messageDiv.className = 'message ' + type;
+      messageDiv.style.display = 'block';
+      
+      // 3秒後自動隱藏所有訊息（包括成功和錯誤）
+      setTimeout(function() {
+        messageDiv.style.display = 'none';
+      }, 3000);
+    }
+  </script>
+</body>
+</html>

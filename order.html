@@ -1,0 +1,2498 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>秩序評分結果查詢</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      min-height: 100%;
+    }
+
+    body {
+      font-family: 'Microsoft JhengHei', Arial, sans-serif;
+      background-color: #fff;
+      padding: 0;
+    }
+    
+    .container {
+      max-width: none;
+      width: 100%;
+      margin: 0;
+      background: white;
+      padding: 12px 16px 20px;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+      text-align: center;
+      border-bottom: 3px solid #e67e22;
+      padding-bottom: 15px;
+    }
+    
+    .nav-link {
+      display: inline-block;
+      margin-bottom: 20px;
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      color: white;
+      text-decoration: none;
+      border-radius: 5px;
+      transition: background-color 0.3s;
+    }
+    
+    .nav-link:hover {
+      background-color: #45a049;
+    }
+    
+    .filter-section {
+      background-color: #f9f9f9;
+      padding: 20px;
+      border-radius: 0 0 8px 8px;
+      margin-bottom: 0;
+      border: 1px solid #ddd;
+      border-top: none;
+    }
+    
+    .query-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0;
+      border-bottom: 2px solid #2196F3;
+      margin-top: 8px;
+    }
+    
+    .query-tab {
+      flex: 1 1 140px;
+      padding: 12px 14px;
+      border: 1px solid #ddd;
+      border-bottom: none;
+      background: #eef2f6;
+      color: #445;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 8px 8px 0 0;
+      margin-right: 4px;
+      margin-bottom: -2px;
+      transition: background-color 0.2s, color 0.2s;
+    }
+    
+    .query-tab:hover {
+      background: #e3eef9;
+      color: #1565c0;
+    }
+    
+    .query-tab.active {
+      background: #2196F3;
+      color: #fff;
+      border-color: #2196F3;
+    }
+    
+    .query-panel {
+      display: none;
+    }
+    
+    .query-panel.active {
+      display: block;
+    }
+    
+    .panel-desc {
+      color: #666;
+      font-size: 14px;
+      margin: -8px 0 16px;
+      line-height: 1.5;
+    }
+    
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    
+    .btn-row .search-btn {
+      flex: 1 1 160px;
+      margin-top: 0;
+      width: auto;
+    }
+    
+    .search-btn.secondary {
+      background-color: #607d8b;
+    }
+    
+    .search-btn.secondary:hover {
+      background-color: #546e7a;
+    }
+    
+    input[type="date"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+    
+    input[type="date"]:focus {
+      outline: none;
+      border-color: #2196F3;
+    }
+    
+    .hint-text {
+      color: #666;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #555;
+      font-weight: bold;
+    }
+    
+    select {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+    
+    select:focus {
+      outline: none;
+      border-color: #2196F3;
+    }
+    
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    
+    @media (max-width: 600px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+      
+      .query-tab {
+        flex: 1 1 calc(50% - 4px);
+        font-size: 14px;
+        padding: 10px 8px;
+        margin-right: 0;
+      }
+    }
+    
+    .search-btn {
+      width: 100%;
+      padding: 15px;
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: background-color 0.3s;
+    }
+    
+    .search-btn:hover {
+      background-color: #0b7dda;
+    }
+    
+    .search-btn:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    
+    .summary-section {
+      background-color: #e7f3ff;
+      padding: 20px;
+      border-radius: 5px;
+      margin-bottom: 30px;
+      border-left: 4px solid #2196F3;
+    }
+    
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    
+    .summary-item {
+      background: white;
+      padding: 15px;
+      border-radius: 5px;
+      text-align: center;
+    }
+    
+    .summary-item .label {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    
+    .summary-item .value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #2196F3;
+    }
+    
+    .summary-item.negative .value {
+      color: #f44336;
+    }
+    
+    .summary-item.positive .value {
+      color: #4CAF50;
+    }
+    
+    .records-section {
+      margin-top: 30px;
+    }
+    
+    .records-section.show {
+      display: block !important;
+      visibility: visible !important;
+    }
+    
+    .weekly-stats-section {
+      margin-top: 30px;
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 5px;
+      border: 2px solid #ddd;
+    }
+    
+    .weekly-stats-grade {
+      margin-bottom: 30px;
+      padding: 20px;
+      background-color: #f9f9f9;
+      border-radius: 5px;
+      border-left: 4px solid #2196F3;
+    }
+    
+    .weekly-stats-grade h3 {
+      color: #2196F3;
+      margin-bottom: 15px;
+      font-size: 20px;
+    }
+    
+    .weekly-stats-group {
+      margin-bottom: 20px;
+    }
+    
+    .weekly-stats-group h4 {
+      color: #555;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+    
+    .weekly-stats-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      background-color: white;
+    }
+    
+    .weekly-stats-table th,
+    .weekly-stats-table td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    /* 匯出每週排名用的簡易 Modal */
+    .export-modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.4);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .export-modal {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      text-align: center;
+      margin: 0 auto;
+    }
+    
+    .export-modal h3 {
+      margin-bottom: 15px;
+      color: #333;
+    }
+    
+    .export-modal p {
+      margin-bottom: 15px;
+      font-size: 14px;
+      color: #555;
+    }
+    
+    .export-modal-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    /* 記錄查詢 Modal 放大成接近全螢幕 */
+    #recordsModalOverlay .export-modal {
+      max-width: 1400px;
+      width: 98%;
+      max-height: 95vh;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    #recordsModalContent {
+      flex: 1 1 auto;
+      max-height: 88vh;
+      overflow: auto;
+    }
+    
+    /* 學期總成績 Modal 放大成接近全螢幕 */
+    #semesterModalOverlay .export-modal {
+      max-width: 1200px;
+      width: 95%;
+      max-height: 90vh;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    #semesterModalContent {
+      flex: 1 1 auto;
+      max-height: 82vh;
+      overflow: auto;
+    }
+    
+    .weekly-stats-table th {
+      background-color: #2196F3;
+      color: white;
+      font-weight: bold;
+    }
+    
+    .weekly-stats-table tr:hover {
+      background-color: #f5f5f5;
+    }
+    
+    .rank-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 3px;
+      font-weight: bold;
+      font-size: 12px;
+      margin-right: 8px;
+    }
+    
+    .rank-1 {
+      background-color: #FFD700;
+      color: #333;
+    }
+    
+    .rank-2 {
+      background-color: #C0C0C0;
+      color: #333;
+    }
+    
+    .rank-3 {
+      background-color: #CD7F32;
+      color: white;
+    }
+    
+    .rank-bottom {
+      background-color: #FF9800;
+      color: white;
+    }
+    
+    .rank-warning {
+      background-color: #f44336;
+      color: white;
+    }
+    
+    .score-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 3px;
+      font-weight: bold;
+    }
+    
+    .score-positive {
+      background-color: #4CAF50;
+      color: white;
+    }
+    
+    .score-negative {
+      background-color: #f44336;
+      color: white;
+    }
+    
+    .score-zero {
+      background-color: #999;
+      color: white;
+    }
+    
+    .records-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    
+    .records-table th,
+    .records-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    /* 評分時間欄位寬度較窄 */
+    .records-table th:first-child,
+    .records-table td:first-child {
+      width: 150px;
+      min-width: 150px;
+      max-width: 150px;
+    }
+    
+    .records-table th {
+      background-color: #2196F3;
+      color: white;
+      font-weight: bold;
+      position: sticky;
+      top: 0;
+    }
+    
+    .records-table tr:hover {
+      background-color: #f5f5f5;
+    }
+    
+    .records-table .score-positive {
+      color: #4CAF50;
+      font-weight: bold;
+      background-color: transparent !important;
+    }
+    
+    .records-table .score-negative {
+      color: #f44336;
+      font-weight: bold;
+      background-color: transparent !important;
+    }
+    
+    .records-table .score-zero {
+      color: #666;
+      background-color: transparent !important;
+    }
+    
+    .photo-links {
+      max-width: 300px;
+      word-wrap: break-word;
+      line-height: 1.8;
+    }
+    
+    .photo-link {
+      display: inline-block;
+      margin: 3px 5px 3px 0;
+      padding: 4px 8px;
+      background-color: #4CAF50;
+      color: white;
+      text-decoration: none;
+      border-radius: 3px;
+      font-size: 12px;
+      transition: background-color 0.3s;
+      white-space: nowrap;
+    }
+    
+    .photo-link:hover {
+      background-color: #45a049;
+      text-decoration: underline;
+    }
+    
+    .photo-link:active {
+      background-color: #3d8b40;
+    }
+    
+    .message {
+      padding: 15px;
+      border-radius: 5px;
+      margin: 15px 0;
+      display: none;
+    }
+    
+    .message.info {
+      background-color: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    
+    .message.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #666;
+    }
+    
+    .no-records {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+      font-size: 18px;
+    }
+    
+    .records-section h2 {
+      color: #2196F3;
+      font-size: 24px;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #2196F3;
+    }
+    
+    .records-section.show {
+      animation: fadeIn 0.5s ease-in;
+    }
+    
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    @media (max-width: 768px) {
+      .records-table {
+        font-size: 12px;
+      }
+      
+      .records-table th,
+      .records-table td {
+        padding: 8px;
+      }
+      
+      .container {
+        padding: 8px 10px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>秩序評分結果查詢</h1>
+    
+    <div style="text-align: center; margin-bottom: 20px;">
+      <a href="index.html" class="nav-link" style="background-color: #607d8b; margin-right: 8px;">回首頁</a>
+      <button type="button" class="nav-link" id="enterScoreSystemBtn" style="background-color: #e67e22; font-size: 18px; padding: 15px 30px;">
+        🔐 進入秩序評分
+      </button>
+    </div>
+    
+    <div id="message" class="message"></div>
+    
+    <nav class="query-tabs" role="tablist" aria-label="查詢類型">
+      <button type="button" class="query-tab active" data-panel="panel-records" role="tab" aria-selected="true">評分記錄</button>
+      <button type="button" class="query-tab" data-panel="panel-weekly" role="tab" aria-selected="false">每週統計</button>
+      <button type="button" class="query-tab" data-panel="panel-comparison" role="tab" aria-selected="false">班級比較</button>
+      <button type="button" class="query-tab" data-panel="panel-semester" role="tab" aria-selected="false">學期總成績</button>
+    </nav>
+    
+    <!-- 1. 評分記錄查詢 -->
+    <div id="panel-records" class="query-panel active" role="tabpanel">
+      <div class="filter-section">
+        <h2 style="margin-bottom: 8px; color: #333;">評分記錄查詢</h2>
+        <p class="panel-desc">依教室或年級查單一班級／年級的評分明細。</p>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="classroomSelect">選擇教室</label>
+            <select id="classroomSelect">
+              <option value="">請選擇教室（可選）</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="gradeSelect">或選擇年級</label>
+            <select id="gradeSelect">
+              <option value="">請選擇年級（可選）</option>
+              <option value="一年級">一年級</option>
+              <option value="二年級">二年級</option>
+              <option value="三年級">三年級</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="btn-row">
+          <button type="button" class="search-btn" id="searchBtn">查詢評分記錄</button>
+          <button type="button" class="search-btn secondary" id="showAllBtn">顯示所有記錄</button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="summarySection" class="summary-section" style="display: none;">
+      <h2 style="margin-bottom: 15px; color: #333;">統計摘要</h2>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="label">記錄筆數</div>
+          <div class="value" id="totalRecords">0</div>
+        </div>
+        <div class="summary-item negative">
+          <div class="label">總扣分</div>
+          <div class="value" id="totalDeduction">0</div>
+        </div>
+        <div class="summary-item positive">
+          <div class="label">總加分</div>
+          <div class="value" id="totalBonus">0</div>
+        </div>
+        <div class="summary-item" id="totalScoreItem">
+          <div class="label">總分</div>
+          <div class="value" id="totalScore">0</div>
+        </div>
+      </div>
+    </div>
+    
+    <div id="recordsSection" class="records-section" style="display: none;">
+      <h2 style="margin-bottom: 15px; color: #333;">評分記錄</h2>
+      <div style="overflow-x: auto;">
+        <table class="records-table">
+          <thead>
+            <tr>
+              <th>評分時間</th>
+              <th>評分人員</th>
+              <th>教室</th>
+              <th>評比項目</th>
+              <th>扣分</th>
+              <th>加分</th>
+              <th>總分</th>
+              <th>備註</th>
+              <th>細項</th>
+            </tr>
+          </thead>
+          <tbody id="recordsTableBody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+    
+    <!-- 評分記錄查詢 Modal -->
+    <div id="recordsModalOverlay" class="export-modal-overlay">
+      <div class="export-modal">
+        <h3>評分記錄查詢結果</h3>
+        <div id="recordsModalContent" style="max-height: 70vh; overflow-y: auto; margin-top: 10px; text-align: left;"></div>
+        <div class="export-modal-buttons">
+          <button type="button" class="search-btn" id="recordsModalCloseBtn" style="background-color: #777;">關閉</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 2. 每週統計 -->
+    <div id="panel-weekly" class="query-panel" role="tabpanel">
+      <div class="filter-section">
+        <h2 style="margin-bottom: 8px; color: #333;">每週評分統計</h2>
+        <p class="panel-desc">查該週各年級前六名（第1–3名、第4–6名），並可匯出排名 CSV、試算表分頁與 Google 文件。</p>
+        <div class="form-group">
+          <label for="weekSelect">選擇週（請選週一）</label>
+          <input type="date" id="weekSelect">
+          <p class="hint-text">預設為本週一</p>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="search-btn" id="weeklyStatsBtn">查詢週統計</button>
+          <button type="button" class="search-btn secondary" id="weeklyExportBtn">匯出每週排名 CSV</button>
+          <button type="button" class="search-btn" id="weeklyExportPdfBtn" style="background-color: #7e57c2;">匯出每週排名 PDF</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 每週統計／班級比較 共用結果 Modal -->
+    <div id="weeklyResultModalOverlay" class="export-modal-overlay" style="display: none;">
+      <div class="export-modal" style="max-width: 1100px; width: 95%; max-height: 90vh;">
+        <h3 id="weeklyResultModalTitle">查詢結果</h3>
+        <div id="weeklyResultModalContent" style="margin-top: 15px; max-height: calc(90vh - 120px); overflow-y: auto;"></div>
+        <div class="export-modal-buttons">
+          <button type="button" class="search-btn" onclick="closeWeeklyResultModal()">關閉</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 匯出每週排名 Modal -->
+    <div id="weeklyExportModal" class="export-modal-overlay">
+      <div class="export-modal">
+        <h3>匯出每週排名</h3>
+        <p id="weeklyExportInfo">已產生每週排名檔案。</p>
+        <div class="export-modal-buttons">
+          <button type="button" class="search-btn" id="weeklyDownloadBtn">下載 CSV</button>
+          <button type="button" class="search-btn" id="weeklyDownloadPdfBtn" style="background-color: #7e57c2;">開啟 Google 文件</button>
+          <button type="button" class="search-btn" style="background-color: #777;" id="weeklyExportCloseBtn">關閉</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 3. 班級比較 -->
+    <div id="panel-comparison" class="query-panel" role="tabpanel">
+      <div class="filter-section">
+        <h2 style="margin-bottom: 8px; color: #333;">班級比較</h2>
+        <p class="panel-desc">同一年級內，挑選多個班級比較該週每日分數與總分。</p>
+        <div class="form-group">
+          <label for="comparisonWeekSelect">選擇週（請選週一）</label>
+          <input type="date" id="comparisonWeekSelect">
+          <p class="hint-text">預設為本週一</p>
+        </div>
+        <div class="form-group">
+          <label for="comparisonGradeSelect">選擇年級</label>
+          <select id="comparisonGradeSelect">
+            <option value="">請先選擇年級</option>
+            <option value="一年級">一年級</option>
+            <option value="二年級">二年級</option>
+            <option value="三年級">三年級</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="comparisonClassrooms">選擇要比較的班級（可多選）</label>
+          <select id="comparisonClassrooms" multiple style="min-height: 150px;">
+            <option value="">請先選擇年級</option>
+          </select>
+          <p class="hint-text">按住 Ctrl（Windows）或 Cmd（Mac）可多選班級</p>
+        </div>
+        <button type="button" class="search-btn" id="comparisonBtn">開始比較</button>
+      </div>
+    </div>
+    
+    <div id="comparisonSection" class="weekly-stats-section" style="display: none; margin-top: 30px;">
+      <h2 style="margin-bottom: 20px; color: #333; text-align: center;">班級比較結果</h2>
+      <div id="comparisonContent"></div>
+    </div>
+    
+    <!-- 4. 學期總成績 -->
+    <div id="panel-semester" class="query-panel" role="tabpanel">
+      <div class="filter-section">
+        <h2 style="margin-bottom: 8px; color: #333;">學期總成績查詢</h2>
+        <p class="panel-desc">依日期區間統計整段期間的班級排名（特優／優勝／待改進）。</p>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="semesterStartDate">開始日期</label>
+            <input type="date" id="semesterStartDate">
+          </div>
+          
+          <div class="form-group">
+            <label for="semesterEndDate">結束日期</label>
+            <input type="date" id="semesterEndDate">
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="semesterGradeSelect">選擇年級（可選）</label>
+          <select id="semesterGradeSelect">
+            <option value="">顯示所有年級</option>
+            <option value="一年級">一年級</option>
+            <option value="二年級">二年級</option>
+            <option value="三年級">三年級</option>
+          </select>
+          <p class="hint-text">不選擇則顯示所有年級的統計</p>
+        </div>
+        
+        <button type="button" class="search-btn" id="semesterStatsBtn">查詢學期總成績</button>
+      </div>
+    </div>
+    
+    <div id="semesterStatsSection" class="weekly-stats-section" style="display: none; margin-top: 30px;">
+      <h2 style="margin-bottom: 20px; color: #333; text-align: center;">學期總成績統計</h2>
+      <div id="semesterStatsContent"></div>
+    </div>
+    
+    <!-- 學期總成績 Modal -->
+    <div id="semesterModalOverlay" class="export-modal-overlay">
+      <div class="export-modal" id="semesterModal">
+        <h3>學期總成績統計</h3>
+        <div id="semesterModalContent" style="max-height: 80vh; overflow-y: auto; margin-top: 10px; text-align: left;"></div>
+        <div class="export-modal-buttons">
+          <button type="button" class="search-btn" id="semesterModalCloseBtn" style="background-color: #777;">關閉</button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="loading" class="loading" style="display: none;">
+      載入中...
+    </div>
+    
+    <div id="noRecords" class="no-records" style="display: none;">
+      目前沒有評分記錄
+    </div>
+    
+    <footer style="text-align: center; margin-top: 40px; padding: 20px; color: #666; border-top: 1px solid #ddd;">
+      <p>© 2025 Jun-Rong,Huang. All rights reserved.</p>
+    </footer>
+  </div>
+
+  <script src="js/config-order.js"></script>
+  <script src="js/api.js"></script>
+  <script>
+    let allClassrooms = [];
+    
+    // 頁面載入時初始化
+    window.onload = function() {
+      loadClassrooms();
+      setupEventListeners();
+      setupQueryTabs();
+    };
+    
+    // 查詢分頁切換：一次只顯示一種查詢
+    function setupQueryTabs() {
+      const tabs = document.querySelectorAll('.query-tab');
+      tabs.forEach(function(tab) {
+        tab.addEventListener('click', function() {
+          const panelId = tab.getAttribute('data-panel');
+          if (!panelId) return;
+          
+          tabs.forEach(function(t) {
+            t.classList.remove('active');
+            t.setAttribute('aria-selected', 'false');
+          });
+          tab.classList.add('active');
+          tab.setAttribute('aria-selected', 'true');
+          
+          document.querySelectorAll('.query-panel').forEach(function(panel) {
+            panel.classList.remove('active');
+          });
+          const panel = document.getElementById(panelId);
+          if (panel) panel.classList.add('active');
+        });
+      });
+    }
+    
+    // 載入教室清單
+    function loadClassrooms() {
+      try {
+        google.script.run
+          .withSuccessHandler(function(classrooms) {
+            try {
+              allClassrooms = classrooms || [];
+              const select = document.getElementById('classroomSelect');
+              if (!select) {
+                console.error('找不到 classroomSelect 元素');
+                return;
+              }
+              
+              // 清空現有選項（保留第一個預設選項）
+              while (select.options.length > 1) {
+                select.remove(1);
+              }
+              
+              if (allClassrooms.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = '暫無教室資料';
+                select.appendChild(option);
+                showMessage('目前沒有教室資料，請先在工作表中設定教室清單', 'error');
+                return;
+              }
+              
+              allClassrooms.forEach(function(room) {
+                if (room && room.name) {
+                  const option = document.createElement('option');
+                  // 教室編號可能是樓層、會重複，以教室名稱為唯一值
+                  option.value = room.name;
+                  option.textContent = room.name + (room.id ? ' (' + room.id + ')' : '');
+                  select.appendChild(option);
+                }
+              });
+            } catch (err) {
+              console.error('處理教室清單時發生錯誤：', err);
+              showMessage('處理教室清單時發生錯誤：' + (err.message || err.toString()), 'error');
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('載入教室清單失敗：', error);
+            const errorMsg = error && error.message ? error.message : (error && error.toString ? error.toString() : '未知錯誤');
+            showMessage('載入教室清單失敗：' + errorMsg, 'error');
+          })
+          .getAllClassrooms();
+      } catch (err) {
+        console.error('調用 getAllClassrooms 時發生錯誤：', err);
+        showMessage('載入教室清單時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+    
+    // 設定事件監聽器
+    function setupEventListeners() {
+      // 進入評分系統按鈕
+      const enterScoreSystemBtn = document.getElementById('enterScoreSystemBtn');
+      if (enterScoreSystemBtn) {
+        enterScoreSystemBtn.addEventListener('click', function() {
+          enterScoreSystem();
+        });
+      }
+      
+      // 查詢按鈕
+      document.getElementById('searchBtn').addEventListener('click', function() {
+        searchRecords();
+      });
+      
+      // 顯示所有記錄按鈕
+      document.getElementById('showAllBtn').addEventListener('click', function() {
+        searchAllRecords();
+      });
+      
+      // 週統計查詢按鈕
+      const weeklyStatsBtn = document.getElementById('weeklyStatsBtn');
+      if (weeklyStatsBtn) {
+        weeklyStatsBtn.addEventListener('click', function() {
+          loadWeeklyStatistics();
+        });
+      }
+      
+      // 匯出每週排名按鈕
+      const weeklyExportBtn = document.getElementById('weeklyExportBtn');
+      const weeklyExportPdfBtn = document.getElementById('weeklyExportPdfBtn');
+      if (weeklyExportBtn) {
+        weeklyExportBtn.addEventListener('click', function() {
+          exportWeeklyStatisticsToCsv();
+        });
+      }
+      if (weeklyExportPdfBtn) {
+        weeklyExportPdfBtn.addEventListener('click', function() {
+          // 先檢查是否已有文件連結
+          const modal = document.getElementById('weeklyExportModal');
+          const info = document.getElementById('weeklyExportInfo');
+          let docUrl = lastWeeklyPdfUrl;
+          
+          // 嘗試從 Modal 中取得連結
+          if (!docUrl && modal) {
+            const urlFromData = modal.getAttribute('data-doc-url');
+            if (urlFromData) {
+              docUrl = urlFromData;
+              lastWeeklyPdfUrl = urlFromData;
+            }
+          }
+          
+          if (!docUrl && info && info.innerHTML) {
+            const linkMatch = info.innerHTML.match(/href="([^"]+)"/);
+            if (linkMatch && linkMatch[1]) {
+              docUrl = linkMatch[1];
+              lastWeeklyPdfUrl = linkMatch[1];
+            }
+          }
+          
+          // 如果有連結，直接開啟；否則先匯出再開啟
+          if (docUrl) {
+            console.log('找到現有文件連結，直接開啟：', docUrl);
+            window.open(docUrl, '_blank');
+          } else {
+            console.log('沒有找到文件連結，先匯出再開啟');
+            exportWeeklyStatisticsToPdf();
+          }
+        });
+      }
+      
+      // 匯出 Modal 按鈕
+      const weeklyDownloadBtn = document.getElementById('weeklyDownloadBtn');
+      const weeklyDownloadPdfBtn = document.getElementById('weeklyDownloadPdfBtn');
+      const weeklyExportCloseBtn = document.getElementById('weeklyExportCloseBtn');
+      if (weeklyDownloadBtn) {
+        weeklyDownloadBtn.addEventListener('click', function() {
+          downloadWeeklyCsv();
+        });
+      }
+      if (weeklyDownloadPdfBtn) {
+        weeklyDownloadPdfBtn.addEventListener('click', function() {
+          openWeeklyPdf();
+        });
+      }
+      if (weeklyExportCloseBtn) {
+        weeklyExportCloseBtn.addEventListener('click', function() {
+          closeWeeklyExportModal();
+        });
+      }
+      
+      // 記錄查詢 Modal 關閉按鈕
+      const recordsModalCloseBtn = document.getElementById('recordsModalCloseBtn');
+      if (recordsModalCloseBtn) {
+        recordsModalCloseBtn.addEventListener('click', function() {
+          closeRecordsModal();
+        });
+      }
+      
+      // 學期總成績 Modal 關閉按鈕
+      const semesterModalCloseBtn = document.getElementById('semesterModalCloseBtn');
+      if (semesterModalCloseBtn) {
+        semesterModalCloseBtn.addEventListener('click', function() {
+          closeSemesterModal();
+        });
+      }
+      
+      // 班級比較按鈕
+      const comparisonBtn = document.getElementById('comparisonBtn');
+      if (comparisonBtn) {
+        comparisonBtn.addEventListener('click', function() {
+          loadClassroomComparison();
+        });
+      }
+      
+      // 學期總成績查詢按鈕
+      const semesterStatsBtn = document.getElementById('semesterStatsBtn');
+      if (semesterStatsBtn) {
+        semesterStatsBtn.addEventListener('click', function() {
+          loadSemesterStatistics();
+        });
+      }
+      
+      // 設定本週一的日期為預設值
+      setDefaultWeekDate();
+      setDefaultComparisonWeekDate();
+      setDefaultComparisonWeekDate();
+      setDefaultSemesterDates();
+      
+      // 教室選擇變更時，清空年級選擇
+      document.getElementById('classroomSelect').addEventListener('change', function() {
+        if (this.value) {
+          document.getElementById('gradeSelect').value = '';
+        }
+      });
+      
+      // 年級選擇變更時，清空教室選擇
+      document.getElementById('gradeSelect').addEventListener('change', function() {
+        if (this.value) {
+          document.getElementById('classroomSelect').value = '';
+        }
+      });
+      
+      // 班級比較的年級選擇變更時，載入對應年級的教室並清空已選擇的教室
+      const comparisonGradeSelect = document.getElementById('comparisonGradeSelect');
+      if (comparisonGradeSelect) {
+        comparisonGradeSelect.addEventListener('change', function() {
+          const selectedGrade = this.value;
+          // 清空已選擇的教室
+          const comparisonClassroomsSelect = document.getElementById('comparisonClassrooms');
+          if (comparisonClassroomsSelect) {
+            // 清除所有選項的選中狀態
+            Array.from(comparisonClassroomsSelect.options).forEach(option => {
+              option.selected = false;
+            });
+          }
+          loadComparisonClassrooms(selectedGrade);
+        });
+      }
+    }
+    
+    // 進入評分系統（需要密碼驗證）
+    function enterScoreSystem() {
+      // 使用 prompt 輸入密碼
+      const inputPassword = prompt('請輸入密碼以進入評分系統：');
+      
+      if (inputPassword === null) {
+        // 使用者取消輸入
+        return;
+      }
+      
+      if (!inputPassword || inputPassword.trim() === '') {
+        showMessage('請輸入密碼', 'error');
+        return;
+      }
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            try {
+              sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.AUTH_STORAGE_KEY) || 'SCHOOL_SCORE_AUTH', inputPassword.trim());
+              sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE', result.loginType || '');
+            } catch (e) {}
+            const loginType = result.loginType || '';
+            window.location.replace('order-score.html?loginType=' + encodeURIComponent(loginType));
+          } else {
+            showMessage(result.message || '密碼錯誤，請重新輸入', 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.error('驗證密碼錯誤：', error);
+          showMessage('驗證密碼時發生錯誤：' + (error.message || error.toString()), 'error');
+        })
+        .verifyScoreSystemPassword(inputPassword);
+    }
+    
+    // 查詢所有記錄
+    function searchAllRecords() {
+      try {
+        // 立即清空表格，避免舊記錄殘留
+        const tbody = document.getElementById('recordsTableBody');
+        if (tbody) {
+          tbody.innerHTML = '';
+          // 移除所有子節點（雙重保險）
+          while (tbody.firstChild) {
+            tbody.removeChild(tbody.firstChild);
+          }
+        }
+        
+        // 清空選擇
+        document.getElementById('classroomSelect').value = '';
+        document.getElementById('gradeSelect').value = '';
+        
+        // 顯示載入中
+        const loadingEl = document.getElementById('loading');
+        const recordsSectionEl = document.getElementById('recordsSection');
+        const summarySectionEl = document.getElementById('summarySection');
+        const noRecordsEl = document.getElementById('noRecords');
+        const searchBtnEl = document.getElementById('searchBtn');
+        const showAllBtnEl = document.getElementById('showAllBtn');
+        
+        if (loadingEl) loadingEl.style.display = 'block';
+        if (recordsSectionEl) recordsSectionEl.style.display = 'none';
+        if (summarySectionEl) summarySectionEl.style.display = 'none';
+        if (noRecordsEl) noRecordsEl.style.display = 'none';
+        if (searchBtnEl) searchBtnEl.disabled = true;
+        if (showAllBtnEl) showAllBtnEl.disabled = true;
+        
+        google.script.run
+          .withSuccessHandler(function(records) {
+            try {
+              if (loadingEl) loadingEl.style.display = 'none';
+              if (searchBtnEl) searchBtnEl.disabled = false;
+              if (showAllBtnEl) showAllBtnEl.disabled = false;
+              
+              if (!records || records.length === 0) {
+                if (noRecordsEl) noRecordsEl.style.display = 'block';
+                showMessage('目前沒有任何評分記錄', 'info');
+                return;
+              }
+              
+              displayRecords(records);
+              calculateSummary(records);
+              // 顯示 Modal（此時統計摘要數值已更新）
+              openRecordsModal();
+              showMessage('已顯示所有 ' + records.length + ' 筆記錄（於視窗中）', 'info');
+            } catch (err) {
+              console.error('處理查詢結果時發生錯誤：', err);
+              if (loadingEl) loadingEl.style.display = 'none';
+              if (searchBtnEl) searchBtnEl.disabled = false;
+              if (showAllBtnEl) showAllBtnEl.disabled = false;
+              showMessage('處理查詢結果時發生錯誤：' + (err.message || err.toString()), 'error');
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('查詢所有評分記錄失敗：', error);
+            if (loadingEl) loadingEl.style.display = 'none';
+            if (searchBtnEl) searchBtnEl.disabled = false;
+            if (showAllBtnEl) showAllBtnEl.disabled = false;
+            const errorMsg = error && error.message ? error.message : (error && error.toString ? error.toString() : '未知錯誤');
+            showMessage('查詢失敗：' + errorMsg, 'error');
+          })
+          .getScoreRecords('', '', '');
+      } catch (err) {
+        console.error('查詢所有記錄時發生錯誤：', err);
+        showMessage('查詢時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+    
+    // 清除所有查詢結果（確保一次只顯示一種結果）
+    function clearAllResults() {
+      const recordsSection = document.getElementById('recordsSection');
+      const summarySection = document.getElementById('summarySection');
+      const weeklyStatsSection = document.getElementById('weeklyStatsSection');
+      const comparisonSection = document.getElementById('comparisonSection');
+      const recordsTableBody = document.getElementById('recordsTableBody');
+      const noRecords = document.getElementById('noRecords');
+      const loading = document.getElementById('loading');
+      
+      // 完全隱藏並清空所有區塊
+      if (recordsSection) {
+        recordsSection.style.display = 'none';
+        recordsSection.style.visibility = 'hidden';
+        recordsSection.classList.remove('show');
+      }
+      if (summarySection) {
+        summarySection.style.display = 'none';
+      }
+      if (weeklyStatsSection) {
+        weeklyStatsSection.style.display = 'none';
+      }
+      if (comparisonSection) {
+        comparisonSection.style.display = 'none';
+      }
+      if (recordsTableBody) {
+        recordsTableBody.innerHTML = '';
+      }
+      if (noRecords) {
+        noRecords.style.display = 'none';
+      }
+      if (loading) {
+        loading.style.display = 'none';
+      }
+    }
+    
+    // 查詢評分記錄
+    function searchRecords() {
+      try {
+        // 立即清空表格，避免舊記錄殘留
+        const tbody = document.getElementById('recordsTableBody');
+        if (tbody) {
+          tbody.innerHTML = '';
+        }
+        
+        const classroomName = document.getElementById('classroomSelect').value;
+        const grade = document.getElementById('gradeSelect').value;
+        
+        // 顯示載入中
+        const loadingEl = document.getElementById('loading');
+        const recordsSectionEl = document.getElementById('recordsSection');
+        const summarySectionEl = document.getElementById('summarySection');
+        const noRecordsEl = document.getElementById('noRecords');
+        const searchBtnEl = document.getElementById('searchBtn');
+        
+        if (loadingEl) loadingEl.style.display = 'block';
+        if (recordsSectionEl) recordsSectionEl.style.display = 'none';
+        if (summarySectionEl) summarySectionEl.style.display = 'none';
+        if (noRecordsEl) noRecordsEl.style.display = 'none';
+        if (searchBtnEl) searchBtnEl.disabled = true;
+        
+        google.script.run
+          .withSuccessHandler(function(records) {
+            try {
+              console.log('收到查詢結果：', records);
+              console.log('記錄數量：', records ? records.length : 0);
+              
+              if (loadingEl) loadingEl.style.display = 'none';
+              if (searchBtnEl) searchBtnEl.disabled = false;
+              
+              if (!records || records.length === 0) {
+                console.log('沒有記錄，顯示無記錄訊息');
+                if (noRecordsEl) noRecordsEl.style.display = 'block';
+                showMessage('查無符合條件的評分記錄', 'info');
+                return;
+              }
+              
+              console.log('準備顯示 ' + records.length + ' 筆記錄');
+              console.log('記錄詳情：', JSON.stringify(records, null, 2));
+              
+              // 確保隱藏載入和無記錄訊息
+              if (noRecordsEl) noRecordsEl.style.display = 'none';
+              
+              displayRecords(records);
+              calculateSummary(records);
+              // 顯示 Modal（此時統計摘要數值已更新）
+              openRecordsModal();
+              
+              showMessage('✓ 找到 ' + records.length + ' 筆符合條件的記錄，已顯示於視窗中', 'info');
+            } catch (err) {
+              console.error('處理查詢結果時發生錯誤：', err);
+              console.error('錯誤堆疊：', err.stack);
+              if (loadingEl) loadingEl.style.display = 'none';
+              if (searchBtnEl) searchBtnEl.disabled = false;
+              showMessage('處理查詢結果時發生錯誤：' + (err.message || err.toString()), 'error');
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('查詢評分記錄失敗：', error);
+            if (loadingEl) loadingEl.style.display = 'none';
+            if (searchBtnEl) searchBtnEl.disabled = false;
+            const errorMsg = error && error.message ? error.message : (error && error.toString ? error.toString() : '未知錯誤');
+            showMessage('查詢失敗：' + errorMsg, 'error');
+          })
+          .getScoreRecords('', classroomName || '', grade || '');
+      } catch (err) {
+        console.error('查詢評分記錄時發生錯誤：', err);
+        showMessage('查詢時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+    
+    // 顯示評分記錄
+    function displayRecords(records) {
+      try {
+        console.log('displayRecords 被調用，記錄數量：', records ? records.length : 0);
+        const tbody = document.getElementById('recordsTableBody');
+        if (!tbody) {
+          console.error('找不到 recordsTableBody 元素');
+          return;
+        }
+        
+        // 清空表格（確保清除所有舊記錄）
+        tbody.innerHTML = '';
+        // 移除所有子節點（雙重保險）
+        while (tbody.firstChild) {
+          tbody.removeChild(tbody.firstChild);
+        }
+        
+        if (!records || !Array.isArray(records)) {
+          console.error('records 不是有效的陣列，類型：', typeof records, '值：', records);
+          return;
+        }
+        
+        console.log('開始處理 ' + records.length + ' 筆記錄');
+        let processedCount = 0;
+        
+        records.forEach(function(record, index) {
+          if (!record) {
+            console.warn('記錄 ' + index + ' 為空，跳過');
+            return;
+          }
+          
+          console.log('處理記錄 ' + index + ':', record);
+          processedCount++;
+          
+          const tr = document.createElement('tr');
+          
+          // 總分樣式
+          let scoreClass = 'score-zero';
+          const totalScore = parseFloat(record.totalScore) || 0;
+          if (totalScore > 0) {
+            scoreClass = 'score-positive';
+          } else if (totalScore < 0) {
+            scoreClass = 'score-negative';
+          }
+          
+          // 轉義 HTML 特殊字元以防止 XSS
+          function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+          }
+          
+          const itemSummaryHtml = (record.photoLinks && String(record.photoLinks).trim())
+            ? escapeHtml(record.photoLinks)
+            : '<span style="color: #999;">無</span>';
+          
+          // 格式化時間顯示
+          function formatTimestamp(timestamp) {
+            if (!timestamp) return '';
+            try {
+              // 如果是字符串，嘗試解析
+              const date = new Date(timestamp);
+              if (isNaN(date.getTime())) {
+                // 如果無法解析，直接返回原字符串
+                return String(timestamp);
+              }
+              // 格式化為：2025-11-22 17:07:51
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              const hours = String(date.getHours()).padStart(2, '0');
+              const minutes = String(date.getMinutes()).padStart(2, '0');
+              const seconds = String(date.getSeconds()).padStart(2, '0');
+              return year + '-' + month + '-' + day + ' ' + hours + ':' + minutes + ':' + seconds;
+            } catch (err) {
+              return String(timestamp);
+            }
+          }
+          
+          // 只顯示評分人員類型（職稱），不顯示姓名
+          let evaluatorInfo = record.evaluatorType || '';
+          
+          // 組裝教室資訊
+          let classroomInfo = '';
+          if (record.classroomName && record.classroomId) {
+            classroomInfo = record.classroomName + ' (' + record.classroomId + ')';
+          } else if (record.classroomName) {
+            classroomInfo = record.classroomName;
+          } else if (record.classroomId) {
+            classroomInfo = record.classroomId;
+          }
+          
+          tr.innerHTML = 
+            '<td>' + escapeHtml(formatTimestamp(record.timestamp)) + '</td>' +
+            '<td>' + escapeHtml(evaluatorInfo) + '</td>' +
+            '<td>' + escapeHtml(classroomInfo) + '</td>' +
+            '<td>' + escapeHtml(record.timeSlot || '') + '</td>' +
+            '<td>' + (parseFloat(record.directDeduction) || parseFloat(record.photoDeduction) || 0) + '</td>' +
+            '<td>' + (parseFloat(record.bonus) || 0) + '</td>' +
+            '<td class="' + scoreClass + '">' + totalScore.toFixed(1) + '</td>' +
+            '<td>' + escapeHtml(record.notes || '') + '</td>' +
+            '<td>' + itemSummaryHtml + '</td>';
+          
+          tbody.appendChild(tr);
+        });
+        
+        console.log('成功處理 ' + processedCount + ' 筆記錄，表格行數：', tbody.rows.length);
+        
+        // 確保表格有內容
+        if (tbody.rows.length === 0 && processedCount > 0) {
+          console.error('警告：處理了 ' + processedCount + ' 筆記錄，但表格沒有行');
+          console.error('tbody.innerHTML 長度：', tbody.innerHTML.length);
+          showMessage('警告：記錄已處理但表格未顯示，請檢查瀏覽器控制台', 'error');
+        } else if (tbody.rows.length > 0) {
+        console.log('✓ 表格已成功顯示 ' + tbody.rows.length + ' 行');
+        }
+        
+        // 確保無記錄訊息被隱藏
+        const noRecordsEl = document.getElementById('noRecords');
+        if (noRecordsEl && processedCount > 0) {
+          noRecordsEl.style.display = 'none';
+        }
+      } catch (err) {
+        console.error('顯示評分記錄時發生錯誤：', err);
+        console.error('錯誤堆疊：', err.stack);
+        showMessage('顯示記錄時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+    
+    // 計算統計摘要
+    function calculateSummary(records) {
+      try {
+        if (!records || !Array.isArray(records)) {
+          console.error('records 不是有效的陣列');
+          return;
+        }
+        
+        const totalRecords = records.length;
+        let totalDeduction = 0;
+        let totalBonus = 0;
+        let totalScore = 0;
+        
+        records.forEach(function(record) {
+          if (!record) return;
+          const photoDeduction = parseFloat(record.photoDeduction) || 0;
+          const directDeduction = parseFloat(record.directDeduction) || 0;
+          totalDeduction += directDeduction || photoDeduction;
+          totalBonus += parseFloat(record.bonus) || 0;
+          totalScore += parseFloat(record.totalScore) || 0;
+        });
+        
+        const totalRecordsEl = document.getElementById('totalRecords');
+        const totalDeductionEl = document.getElementById('totalDeduction');
+        const totalBonusEl = document.getElementById('totalBonus');
+        const totalScoreElement = document.getElementById('totalScore');
+        const totalScoreItem = document.getElementById('totalScoreItem');
+        
+        if (totalRecordsEl) totalRecordsEl.textContent = totalRecords;
+        if (totalDeductionEl) totalDeductionEl.textContent = totalDeduction.toFixed(1);
+        if (totalBonusEl) totalBonusEl.textContent = totalBonus.toFixed(1);
+        
+        if (totalScoreElement) {
+          totalScoreElement.textContent = totalScore.toFixed(1);
+        }
+        
+        // 根據總分設定樣式
+        if (totalScoreItem) {
+          totalScoreItem.className = 'summary-item';
+          if (totalScore > 0) {
+            totalScoreItem.classList.add('positive');
+          } else if (totalScore < 0) {
+            totalScoreItem.classList.add('negative');
+          }
+        }
+        
+        // 不再在主畫面顯示統計摘要，只更新數值，供 Modal 使用
+      } catch (err) {
+        console.error('計算統計摘要時發生錯誤：', err);
+        showMessage('計算統計時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+    
+    // 設定本週一的日期為預設值
+    function setDefaultWeekDate() {
+      const weekSelect = document.getElementById('weekSelect');
+      if (!weekSelect) return;
+      
+      const today = new Date();
+      const dayOfWeek = today.getDay(); // 0=週日, 1=週一, ..., 6=週六
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // 調整為週一開始
+      const monday = new Date(today);
+      monday.setDate(today.getDate() + diff);
+      
+      // 格式化為 YYYY-MM-DD
+      const year = monday.getFullYear();
+      const month = String(monday.getMonth() + 1).padStart(2, '0');
+      const day = String(monday.getDate()).padStart(2, '0');
+      weekSelect.value = year + '-' + month + '-' + day;
+    }
+    
+    // 設定比較功能的本週一日期為預設值
+    function setDefaultComparisonWeekDate() {
+      const comparisonWeekSelect = document.getElementById('comparisonWeekSelect');
+      if (!comparisonWeekSelect) return;
+      
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monday = new Date(today);
+      monday.setDate(today.getDate() + diff);
+      
+      const year = monday.getFullYear();
+      const month = String(monday.getMonth() + 1).padStart(2, '0');
+      const day = String(monday.getDate()).padStart(2, '0');
+      comparisonWeekSelect.value = year + '-' + month + '-' + day;
+    }
+    
+    // 載入比較功能的教室清單（根據年級過濾）
+    function loadComparisonClassrooms(grade) {
+      try {
+        const select = document.getElementById('comparisonClassrooms');
+        if (!select) {
+          console.error('找不到 comparisonClassrooms 元素');
+          return;
+        }
+        
+        // 如果沒有選擇年級，清空選項並顯示提示
+        if (!grade || grade === '') {
+          select.innerHTML = '<option value="">請先選擇年級</option>';
+          return;
+        }
+        
+        // 顯示載入中
+        select.innerHTML = '<option value="">載入中...</option>';
+        
+        google.script.run
+          .withSuccessHandler(function(allClassrooms) {
+            try {
+              // 清空現有選項
+              select.innerHTML = '';
+              
+              if (!allClassrooms || allClassrooms.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = '暫無教室資料';
+                select.appendChild(option);
+                return;
+              }
+              
+              // 根據年級過濾教室（直接匹配，不使用映射）
+              // 檢查年級是否匹配（支援多種格式）
+              function isGradeMatch(roomGrade, targetGrade) {
+                if (!roomGrade || roomGrade === '') return false;
+                
+                const roomGradeTrim = String(roomGrade).trim();
+                const targetGradeTrim = String(targetGrade).trim();
+                
+                // 直接匹配
+                if (roomGradeTrim === targetGradeTrim) return true;
+                
+                // 匹配變體格式
+                const gradeVariants = {
+                  '一年級': ['一年級', '1年級', '1', '一', '一級', '一年'],
+                  '二年級': ['二年級', '2年級', '2', '二', '二級', '二年'],
+                  '三年級': ['三年級', '3年級', '3', '三', '三級', '三年']
+                };
+                
+                const targetVariants = gradeVariants[targetGradeTrim] || [targetGradeTrim];
+                return targetVariants.some(variant => roomGradeTrim === variant || roomGradeTrim.includes(variant) || variant.includes(roomGradeTrim));
+              }
+              
+              const filteredClassrooms = allClassrooms.filter(function(room) {
+                if (!room) return false;
+                
+                // 如果教室有 grade 字段，使用它
+                if (room.grade && room.grade !== '') {
+                  return isGradeMatch(room.grade, grade);
+                }
+                
+                // 如果沒有 grade 字段，從教室名稱推斷
+                if (room.name) {
+                  const name = String(room.name);
+                  let inferredGrade = '';
+                  
+                  if (name.includes('一年') || (name.match(/^1/) && !name.match(/^10/))) {
+                    inferredGrade = '一年級';
+                  } else if (name.includes('二年') || (name.match(/^2/) && !name.match(/^20/))) {
+                    inferredGrade = '二年級';
+                  } else if (name.includes('三年') || (name.match(/^3/) && !name.match(/^30/))) {
+                    inferredGrade = '三年級';
+                  } else if (name.includes('一')) {
+                    inferredGrade = '一年級';
+                  } else if (name.includes('二')) {
+                    inferredGrade = '二年級';
+                  } else if (name.includes('三')) {
+                    inferredGrade = '三年級';
+                  }
+                  
+                  if (inferredGrade) {
+                    return isGradeMatch(inferredGrade, grade);
+                  }
+                }
+                
+                return false;
+              });
+              
+              if (filteredClassrooms.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = '該年級暫無教室資料';
+                select.appendChild(option);
+                return;
+              }
+              
+              filteredClassrooms.forEach(function(room) {
+                if (room && room.id && room.name) {
+                  const option = document.createElement('option');
+                  // 以「教室名稱」作為比較主鍵，避免同樓層不同班被合併
+                  option.value = room.name;
+                  option.textContent = room.name + ' (' + room.id + ')';
+                  select.appendChild(option);
+                }
+              });
+            } catch (err) {
+              console.error('處理教室清單時發生錯誤：', err);
+              select.innerHTML = '<option value="">載入失敗</option>';
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('載入教室清單失敗：', error);
+            select.innerHTML = '<option value="">載入失敗</option>';
+          })
+          .getAllClassrooms();
+      } catch (err) {
+        console.error('調用 getAllClassrooms 時發生錯誤：', err);
+        const select = document.getElementById('comparisonClassrooms');
+        if (select) {
+          select.innerHTML = '<option value="">載入失敗</option>';
+        }
+      }
+    }
+    
+    // 載入班級比較
+    function loadClassroomComparison() {
+      try {
+        const comparisonWeekSelect = document.getElementById('comparisonWeekSelect');
+        const comparisonGradeSelect = document.getElementById('comparisonGradeSelect');
+        const comparisonClassroomsSelect = document.getElementById('comparisonClassrooms');
+        const comparisonBtn = document.getElementById('comparisonBtn');
+        const comparisonSection = document.getElementById('comparisonSection');
+        const comparisonContent = document.getElementById('comparisonContent');
+        
+        if (!comparisonWeekSelect || !comparisonGradeSelect || !comparisonClassroomsSelect) {
+          showMessage('找不到比較功能元素', 'error');
+          return;
+        }
+        
+        // 檢查是否選擇了年級
+        const selectedGrade = comparisonGradeSelect.value;
+        if (!selectedGrade || selectedGrade === '') {
+          showMessage('請先選擇年級', 'error');
+          return;
+        }
+        
+        // 取得選中的班級
+        const selectedClassrooms = Array.from(comparisonClassroomsSelect.selectedOptions).map(option => option.value);
+        
+        if (selectedClassrooms.length === 0) {
+          showMessage('請至少選擇一個班級進行比較', 'error');
+          return;
+        }
+        
+        const weekDate = comparisonWeekSelect.value;
+        
+        if (comparisonBtn) comparisonBtn.disabled = true;
+        if (comparisonSection) {
+          comparisonSection.style.display = 'none';
+        }
+        if (comparisonContent) {
+          comparisonContent.innerHTML = '';
+        }
+        
+        showMessage('查詢班級比較中...', 'info');
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (comparisonBtn) comparisonBtn.disabled = false;
+            
+            if (!result || !result.success) {
+              showMessage('查詢班級比較失敗：' + (result.error || '未知錯誤'), 'error');
+              return;
+            }
+            
+            displayClassroomComparison(result);
+            showMessage('班級比較查詢完成', 'info');
+          })
+          .withFailureHandler(function(error) {
+            if (comparisonBtn) comparisonBtn.disabled = false;
+            showMessage('查詢班級比較失敗：' + (error.message || error.toString()), 'error');
+          })
+          .getClassroomComparison(selectedClassrooms, weekDate || null, selectedGrade);
+      } catch (err) {
+        showMessage('查詢班級比較時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+    
+    // 開啟／關閉 每週統計／班級比較 共用 Modal
+    function openWeeklyResultModal(title, html) {
+      const overlay = document.getElementById('weeklyResultModalOverlay');
+      const titleEl = document.getElementById('weeklyResultModalTitle');
+      const contentEl = document.getElementById('weeklyResultModalContent');
+      if (!overlay || !titleEl || !contentEl) return;
+      titleEl.textContent = title || '查詢結果';
+      contentEl.innerHTML = html || '';
+      overlay.style.display = 'flex';
+    }
+    
+    function closeWeeklyResultModal() {
+      const overlay = document.getElementById('weeklyResultModalOverlay');
+      if (overlay) overlay.style.display = 'none';
+    }
+    
+    // 顯示班級比較結果（改為使用 Modal 顯示）
+    function displayClassroomComparison(result) {
+      const classrooms = result.classrooms || [];
+      
+      if (classrooms.length === 0) {
+        openWeeklyResultModal('班級比較結果', '<p style="text-align: center; color: #999; padding: 40px;">所選班級在本週沒有評分記錄</p>');
+        return;
+      }
+      
+      let html = '<p style="text-align: center; color: #666; margin-bottom: 20px; font-size: 16px; font-weight: bold;">';
+      html += '比較期間：' + result.weekStart + ' ~ ' + result.weekEnd;
+      html += '</p>';
+      
+      html += '<div style="overflow-x: auto;">';
+      html += '<table class="weekly-stats-table" style="min-width: 800px;">';
+      html += '<thead>';
+      html += '<tr>';
+      html += '<th>排名</th>';
+      html += '<th>教室</th>';
+      html += '<th>週一<br>(' + result.mondayDate + ')</th>';
+      html += '<th>週二<br>(' + result.tuesdayDate + ')</th>';
+      html += '<th>週三<br>(' + result.wednesdayDate + ')</th>';
+      html += '<th>週四<br>(' + result.thursdayDate + ')</th>';
+      html += '<th>週五<br>(' + result.fridayDate + ')</th>';
+      html += '<th>週末</th>';
+      html += '<th>總分</th>';
+      html += '<th>記錄數</th>';
+      html += '</tr>';
+      html += '</thead>';
+      html += '<tbody>';
+      
+      const totalCount = classrooms.length;
+      classrooms.forEach(function(classroom, index) {
+        const rank = index + 1;
+        // 根據排名設定底色，與週排名相同
+        let rankClass = '';
+        if (rank <= 3) {
+          // 第1-3名：金色（與特優3名相同）
+          rankClass = 'rank-1';
+        } else if (rank <= 6) {
+          // 第4-6名：橙色（與優等3名相同）
+          rankClass = 'rank-bottom';
+        } else if (rank > totalCount - 3) {
+          // 後3名：紅色（與待改進相同）
+          rankClass = 'rank-warning';
+        }
+        const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
+                          classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
+        // 格式化總分：正值顯示正號
+        const formattedTotalScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+        
+        html += '<tr>';
+        html += '<td><span class="rank-badge ' + rankClass + '">第' + rank + '名</span></td>';
+        html += '<td><strong>' + (classroom.classroomName || classroom.classroomId) + '</strong><br>(' + classroom.classroomId + ')</td>';
+        html += '<td><span class="score-badge ' + (classroom.monday > 0 ? 'score-positive' : classroom.monday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.monday.toFixed(1) + '</span></td>';
+        html += '<td><span class="score-badge ' + (classroom.tuesday > 0 ? 'score-positive' : classroom.tuesday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.tuesday.toFixed(1) + '</span></td>';
+        html += '<td><span class="score-badge ' + (classroom.wednesday > 0 ? 'score-positive' : classroom.wednesday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.wednesday.toFixed(1) + '</span></td>';
+        html += '<td><span class="score-badge ' + (classroom.thursday > 0 ? 'score-positive' : classroom.thursday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.thursday.toFixed(1) + '</span></td>';
+        html += '<td><span class="score-badge ' + (classroom.friday > 0 ? 'score-positive' : classroom.friday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.friday.toFixed(1) + '</span></td>';
+        html += '<td><span class="score-badge ' + (classroom.weekend > 0 ? 'score-positive' : classroom.weekend < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.weekend.toFixed(1) + '</span></td>';
+        html += '<td><span class="score-badge ' + scoreClass + '" style="font-size: 16px; padding: 6px 12px;">' + formattedTotalScore + '</span></td>';
+        html += '<td>' + classroom.recordCount + ' 筆</td>';
+        html += '</tr>';
+      });
+      
+      html += '</tbody>';
+      html += '</table>';
+      html += '</div>';
+      
+      openWeeklyResultModal('班級比較結果', html);
+    }
+    
+    // 載入週統計
+    function loadWeeklyStatistics() {
+      try {
+        const weekSelect = document.getElementById('weekSelect');
+        const weekDate = weekSelect ? weekSelect.value : '';
+        const weeklyStatsBtn = document.getElementById('weeklyStatsBtn');
+        
+        if (weeklyStatsBtn) weeklyStatsBtn.disabled = true;
+        
+        showMessage('查詢週統計中...', 'info');
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (weeklyStatsBtn) weeklyStatsBtn.disabled = false;
+            
+            if (!result || !result.success) {
+              showMessage('查詢週統計失敗：' + (result.error || '未知錯誤'), 'error');
+              return;
+            }
+            
+            displayWeeklyStatistics(result);
+            showMessage('週統計查詢完成', 'success');
+          })
+          .withFailureHandler(function(error) {
+            if (weeklyStatsBtn) weeklyStatsBtn.disabled = false;
+            showMessage('查詢週統計失敗：' + (error.message || error.toString()), 'error');
+          })
+          .getWeeklyStatistics(weekDate || null);
+      } catch (err) {
+        showMessage('查詢週統計時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+    
+    // 匯出每週排名為 CSV，並顯示下載 Modal
+    let lastWeeklyCsv = null;
+    let lastWeeklyPdfUrl = null;
+    
+    function exportWeeklyStatisticsToCsv() {
+      try {
+        const weekSelect = document.getElementById('weekSelect');
+        const weekDate = weekSelect ? weekSelect.value : '';
+        const weeklyExportBtn = document.getElementById('weeklyExportBtn');
+        
+        if (weeklyExportBtn) weeklyExportBtn.disabled = true;
+        showMessage('匯出每週排名 CSV 中...', 'info');
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (weeklyExportBtn) weeklyExportBtn.disabled = false;
+            
+            if (!result || !result.success) {
+              showMessage(result && result.message ? result.message : '匯出每週排名 CSV 失敗', 'error');
+              return;
+            }
+            
+            // 直接下載 CSV 檔案
+            if (!result.csvContent) {
+              showMessage('無法取得 CSV 內容', 'error');
+              return;
+            }
+            
+            try {
+              const filename = result.filename || 'weekly_stats.csv';
+              const csvContent = result.csvContent;
+              const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              
+              let doneMsg = 'CSV 檔案下載完成';
+              if (result.sheetName) {
+                doneMsg += '，並已在試算表新增分頁「' + result.sheetName + '」';
+              }
+              showMessage(doneMsg, 'success');
+            } catch (err) {
+              console.error('下載 CSV 時發生錯誤：', err);
+              showMessage('下載 CSV 檔時發生錯誤：' + (err.message || err.toString()), 'error');
+            }
+          })
+          .withFailureHandler(function(error) {
+            if (weeklyExportBtn) weeklyExportBtn.disabled = false;
+            showMessage('匯出每週排名 CSV 失敗：' + (error.message || error.toString()), 'error');
+          })
+          .exportWeeklyStatisticsCsv(weekDate || null);
+      } catch (err) {
+        showMessage('匯出每週排名 CSV 時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+
+    // 匯出每週排名為 PDF（在後端產生匯出連結，再由瀏覽器開啟）
+    function exportWeeklyStatisticsToPdf() {
+      console.log('exportWeeklyStatisticsToPdf 函式被呼叫');
+      try {
+        const weekSelect = document.getElementById('weekSelect');
+        const weekDate = weekSelect ? weekSelect.value : '';
+        const weeklyExportPdfBtn = document.getElementById('weeklyExportPdfBtn');
+        
+        console.log('週日期：', weekDate);
+        console.log('按鈕元素：', weeklyExportPdfBtn);
+        
+        if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = true;
+        showMessage('匯出每週排名 PDF 中...', 'info');
+        
+        console.log('準備呼叫 google.script.run.exportWeeklyStatisticsPdf');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = false;
+            
+            // 除錯：記錄收到的結果
+            console.log('匯出結果：', result);
+            
+            if (!result || !result.success) {
+              const errorMsg = result && result.message ? result.message : '匯出每週排名 PDF 失敗';
+              console.error('匯出失敗：', errorMsg);
+              showMessage(errorMsg, 'error');
+              return;
+            }
+            
+            // 檢查 docUrl 是否存在
+            if (!result.docUrl) {
+              console.error('docUrl 不存在，result：', result);
+              showMessage('無法取得 Google 文件連結，請檢查 Apps Script 執行記錄。', 'error');
+              return;
+            }
+            
+            lastWeeklyPdfUrl = result.docUrl;
+            console.log('已設定 lastWeeklyPdfUrl：', lastWeeklyPdfUrl);
+            
+            // 將連結儲存在 Modal 的 data 屬性中，作為備用（供其他功能使用）
+            const modal = document.getElementById('weeklyExportModal');
+            if (modal) {
+              modal.setAttribute('data-doc-url', result.docUrl);
+            }
+            
+            // 只顯示已產生訊息，不自動開啟 Google 文件
+            showMessage('已產生每週排名 Google 文件（' + (result.weekStart || '') + ' ~ ' + (result.weekEnd || '') + '）。', 'success');
+          })
+          .withFailureHandler(function(error) {
+            if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = false;
+            console.error('匯出失敗（FailureHandler）：', error);
+            const errorMsg = error && error.message ? error.message : (error.toString ? error.toString() : '未知錯誤');
+            console.error('錯誤詳情：', errorMsg);
+            showMessage('匯出每週排名 PDF 失敗：' + errorMsg, 'error');
+          })
+          .exportWeeklyStatisticsPdf(weekDate || null);
+      } catch (err) {
+        console.error('匯出函式執行時發生錯誤：', err);
+        if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = false;
+        showMessage('匯出每週排名 PDF 時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+    
+    // 關閉匯出 Modal
+    function closeWeeklyExportModal() {
+      const modal = document.getElementById('weeklyExportModal');
+      if (modal) {
+        modal.style.display = 'none';
+      }
+    }
+    
+    // 在瀏覽器端下載 CSV 檔案
+    function downloadWeeklyCsv() {
+      if (!lastWeeklyCsv || !lastWeeklyCsv.csvContent) {
+        showMessage('找不到可下載的 CSV 內容，請重新匯出。', 'error');
+        return;
+      }
+      try {
+        const filename = lastWeeklyCsv.filename || 'weekly_stats.csv';
+        const csvContent = lastWeeklyCsv.csvContent;
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        closeWeeklyExportModal();
+      } catch (err) {
+        showMessage('下載 CSV 檔時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+
+    // 開啟剛產生的每週排名 Google 文件
+    function openWeeklyPdf() {
+      console.log('openWeeklyPdf 被呼叫，lastWeeklyPdfUrl：', lastWeeklyPdfUrl);
+      
+      let docUrl = lastWeeklyPdfUrl;
+      const modal = document.getElementById('weeklyExportModal');
+      const info = document.getElementById('weeklyExportInfo');
+      
+      // 如果變數為空，嘗試從 Modal 中取得連結
+      if (!docUrl) {
+        console.log('lastWeeklyPdfUrl 為空，嘗試從 Modal 中取得連結');
+        
+        // 方法1：從 Modal 的 data 屬性取得
+        if (modal) {
+          const urlFromData = modal.getAttribute('data-doc-url');
+          if (urlFromData) {
+            console.log('從 Modal data 屬性找到連結：', urlFromData);
+            docUrl = urlFromData;
+            lastWeeklyPdfUrl = urlFromData; // 更新變數
+          }
+        }
+        
+        // 方法2：從 Modal 的 HTML 內容中提取連結
+        if (!docUrl && info && info.innerHTML) {
+          const linkMatch = info.innerHTML.match(/href="([^"]+)"/);
+          if (linkMatch && linkMatch[1]) {
+            console.log('從 Modal HTML 中找到連結：', linkMatch[1]);
+            docUrl = linkMatch[1];
+            lastWeeklyPdfUrl = linkMatch[1]; // 更新變數
+          }
+        }
+      }
+      
+      if (!docUrl) {
+        // 若還是找不到連結，提示使用者
+        console.error('無法找到 Google 文件連結');
+        console.error('lastWeeklyPdfUrl：', lastWeeklyPdfUrl);
+        console.error('Modal data-doc-url：', modal ? modal.getAttribute('data-doc-url') : 'Modal 不存在');
+        console.error('Modal HTML：', info ? info.innerHTML : 'Info 不存在');
+        
+        // 檢查 Modal 是否顯示
+        const modalVisible = modal && modal.style.display !== 'none';
+        if (!modalVisible) {
+          showMessage('請先按「匯出每週排名 PDF」按鈕（紫色按鈕）產生 Google 文件，等待匯出完成後，再按「開啟 Google 文件」按鈕。', 'error');
+        } else {
+          showMessage('找不到 Google 文件連結。請重新按「匯出每週排名 PDF」按鈕產生文件。', 'error');
+        }
+        return;
+      }
+      
+      // 使用找到的連結開啟文件
+      console.log('準備開啟 Google 文件：', docUrl);
+      
+      try {
+        console.log('嘗試開啟 Google 文件：', docUrl);
+        
+        // 使用新視窗開啟 Google 文件連結
+        const docWindow = window.open(docUrl, '_blank');
+        
+        if (!docWindow || docWindow.closed || typeof docWindow.closed === 'undefined') {
+          // 如果彈出視窗被阻擋，提示使用者
+          console.warn('彈出視窗被阻擋，嘗試直接導向');
+          showMessage('瀏覽器阻擋了彈出視窗，正在直接開啟連結...', 'info');
+          // 也可以嘗試直接導向
+          setTimeout(function() {
+            window.location.href = docUrl;
+          }, 500);
+        } else {
+          console.log('成功開啟新視窗');
+        }
+      } catch (err) {
+        console.error('開啟 Google 文件時發生錯誤：', err);
+        showMessage('開啟 Google 文件時發生錯誤：' + (err.message || err.toString()) + '。正在嘗試直接開啟連結...', 'error');
+        // 如果 window.open 失敗，嘗試直接導向
+        try {
+          setTimeout(function() {
+            window.location.href = docUrl;
+          }, 500);
+        } catch (e) {
+          console.error('無法開啟 Google 文件：', e);
+          showMessage('無法開啟 Google 文件，請手動複製連結：' + docUrl, 'error');
+        }
+      }
+    }
+    
+    // 開啟評分記錄查詢結果 Modal
+    function openRecordsModal() {
+      const overlay = document.getElementById('recordsModalOverlay');
+      const content = document.getElementById('recordsModalContent');
+      const summarySection = document.getElementById('summarySection');
+      const recordsSection = document.getElementById('recordsSection');
+      if (!overlay || !content || !recordsSection) {
+        console.error('開啟記錄 Modal 時找不到必要元素');
+        return;
+      }
+      
+      // 將統計摘要與記錄表一起放進 Modal
+      let html = '';
+      if (summarySection) {
+        // 包一層 .summary-section，保留主畫面的背景色與邊框樣式
+        html += '<div class="summary-section">' + summarySection.innerHTML + '</div>';
+      }
+      html += recordsSection.innerHTML;
+      content.innerHTML = html;
+      overlay.style.display = 'flex';
+    }
+    
+    function closeRecordsModal() {
+      const overlay = document.getElementById('recordsModalOverlay');
+      if (overlay) {
+        overlay.style.display = 'none';
+      }
+    }
+    
+    function closeSemesterModal() {
+      const overlay = document.getElementById('semesterModalOverlay');
+      if (overlay) {
+        overlay.style.display = 'none';
+      }
+    }
+    
+    // 設定學期日期預設值（當前學年度）
+    function setDefaultSemesterDates() {
+      const semesterStartDate = document.getElementById('semesterStartDate');
+      const semesterEndDate = document.getElementById('semesterEndDate');
+      
+      if (!semesterStartDate || !semesterEndDate) return;
+      
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1; // 1-12
+      
+      // 台灣學制：第一學期約8月到1月，第二學期約2月到7月
+      let startDate, endDate;
+      
+      if (currentMonth >= 8 || currentMonth <= 1) {
+        // 第一學期：8月1日到1月31日
+        startDate = new Date(currentYear, 7, 1); // 8月（月份從0開始）
+        if (currentMonth <= 1) {
+          // 如果是1月，結束日期是當年的1月31日
+          endDate = new Date(currentYear, 0, 31);
+        } else {
+          // 如果是8月之後，結束日期是次年的1月31日
+          endDate = new Date(currentYear + 1, 0, 31);
+        }
+      } else {
+        // 第二學期：2月1日到7月31日
+        startDate = new Date(currentYear, 1, 1); // 2月
+        endDate = new Date(currentYear, 6, 31); // 7月
+      }
+      
+      // 格式化為 YYYY-MM-DD
+      const formatDate = function(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return year + '-' + month + '-' + day;
+      };
+      
+      semesterStartDate.value = formatDate(startDate);
+      semesterEndDate.value = formatDate(endDate);
+    }
+    
+    // 載入學期總成績統計
+    function loadSemesterStatistics() {
+      try {
+        const semesterStartDate = document.getElementById('semesterStartDate');
+        const semesterEndDate = document.getElementById('semesterEndDate');
+        const semesterGradeSelect = document.getElementById('semesterGradeSelect');
+        const semesterStatsBtn = document.getElementById('semesterStatsBtn');
+        const semesterStatsSection = document.getElementById('semesterStatsSection');
+        const semesterStatsContent = document.getElementById('semesterStatsContent');
+        
+        if (!semesterStartDate || !semesterEndDate) {
+          showMessage('找不到日期輸入欄位', 'error');
+          return;
+        }
+        
+        const startDate = semesterStartDate.value;
+        const endDate = semesterEndDate.value;
+        const selectedGrade = semesterGradeSelect ? semesterGradeSelect.value : '';
+        
+        if (!startDate || !endDate) {
+          showMessage('請選擇開始日期和結束日期', 'error');
+          return;
+        }
+        
+        if (semesterStatsBtn) semesterStatsBtn.disabled = true;
+        if (semesterStatsSection) {
+          semesterStatsSection.style.display = 'none';
+        }
+        if (semesterStatsContent) {
+          semesterStatsContent.innerHTML = '';
+        }
+        
+        showMessage('查詢學期總成績中...', 'info');
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (semesterStatsBtn) semesterStatsBtn.disabled = false;
+            
+            if (!result || !result.success) {
+              showMessage('查詢學期總成績失敗：' + (result.error || '未知錯誤'), 'error');
+              return;
+            }
+            
+            displaySemesterStatistics(result);
+            showMessage('學期總成績查詢完成', 'info');
+          })
+          .withFailureHandler(function(error) {
+            if (semesterStatsBtn) semesterStatsBtn.disabled = false;
+            showMessage('查詢學期總成績失敗：' + (error.message || error.toString()), 'error');
+          })
+          .getSemesterStatistics(startDate, endDate, selectedGrade || null);
+      } catch (err) {
+        showMessage('查詢學期總成績時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+    
+    // 顯示學期總成績統計
+    function displaySemesterStatistics(result) {
+      const semesterModalOverlay = document.getElementById('semesterModalOverlay');
+      const semesterModalContent = document.getElementById('semesterModalContent');
+      if (!semesterModalOverlay || !semesterModalContent) return;
+      
+      const statistics = result.statistics || {};
+      const grades = ['一年級', '二年級', '三年級'];
+      
+      let html = '<p style="text-align: center; color: #666; margin-bottom: 20px; font-size: 16px; font-weight: bold;">';
+      html += '統計期間：' + result.startDate + ' ~ ' + result.endDate;
+      html += '</p>';
+      
+      // 如果沒有統計資料
+      if (Object.keys(statistics).length === 0) {
+        html += '<p style="text-align: center; color: #999; padding: 40px;">所選期間內沒有評分記錄</p>';
+        semesterModalContent.innerHTML = html;
+        semesterModalOverlay.style.display = 'flex';
+        return;
+      }
+      
+      grades.forEach(function(grade) {
+        if (!statistics[grade]) {
+          return; // 如果該年級沒有資料，跳過
+        }
+        
+        const gradeStats = statistics[grade];
+        html += '<div class="weekly-stats-grade">';
+        html += '<h3>' + grade + '（共 ' + gradeStats.totalClassrooms + ' 間教室）</h3>';
+        
+        // 特優（學期第1名）
+        if (gradeStats.top3 && gradeStats.top3.length > 0) {
+          html += '<div class="weekly-stats-group">';
+          html += '<h4>🏆 特優</h4>';
+          html += '<table class="weekly-stats-table">';
+          html += '<thead><tr><th>名次</th><th>教室</th><th>總分</th><th>記錄數</th></tr></thead>';
+          html += '<tbody>';
+          gradeStats.top3.forEach(function(classroom) {
+            const rankClass = 'rank-1';
+            const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
+                              classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
+            // 格式化分數：正值顯示正號
+            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            html += '<tr>';
+            html += '<td><span class="rank-badge ' + rankClass + '">第' + classroom.rank + '名</span></td>';
+            html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
+            html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
+            html += '<td>' + classroom.recordCount + ' 筆</td>';
+            html += '</tr>';
+          });
+          html += '</tbody></table>';
+          html += '</div>';
+        }
+        
+        // 優勝（學期第2-3名）
+        if (gradeStats.excellent3 && gradeStats.excellent3.length > 0) {
+          html += '<div class="weekly-stats-group">';
+          html += '<h4>⭐ 優勝</h4>';
+          html += '<table class="weekly-stats-table">';
+          html += '<thead><tr><th>名次</th><th>教室</th><th>總分</th><th>記錄數</th></tr></thead>';
+          html += '<tbody>';
+          gradeStats.excellent3.forEach(function(classroom) {
+            const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
+                              classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
+            // 格式化分數：正值顯示正號
+            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            html += '<tr>';
+            html += '<td><span class="rank-badge rank-bottom">第' + classroom.rank + '名</span></td>';
+            html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
+            html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
+            html += '<td>' + classroom.recordCount + ' 筆</td>';
+            html += '</tr>';
+          });
+          html += '</tbody></table>';
+          html += '</div>';
+        }
+        
+        // 待改進
+        if (gradeStats.bottom3 && gradeStats.bottom3.length > 0) {
+          html += '<div class="weekly-stats-group">';
+          html += '<h4>⚠️ 待改進</h4>';
+          html += '<table class="weekly-stats-table">';
+          html += '<thead><tr><th>名次</th><th>教室</th><th>總分</th><th>記錄數</th></tr></thead>';
+          html += '<tbody>';
+          gradeStats.bottom3.forEach(function(classroom) {
+            const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
+                              classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
+            // 格式化分數：正值顯示正號
+            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            html += '<tr>';
+            html += '<td><span class="rank-badge rank-warning">第' + classroom.rank + '名</span></td>';
+            html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
+            html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
+            html += '<td>' + classroom.recordCount + ' 筆</td>';
+            html += '</tr>';
+          });
+          html += '</tbody></table>';
+          html += '</div>';
+        }
+        
+        // 完整排名（可選，如果需要顯示所有班級）
+        if (gradeStats.allClassrooms && gradeStats.allClassrooms.length > 0) {
+          html += '<div class="weekly-stats-group">';
+          html += '<h4>📊 完整排名</h4>';
+          html += '<div style="max-height: 400px; overflow-y: auto;">';
+          html += '<table class="weekly-stats-table">';
+          html += '<thead><tr><th>名次</th><th>教室</th><th>總分</th><th>記錄數</th></tr></thead>';
+          html += '<tbody>';
+          gradeStats.allClassrooms.forEach(function(classroom) {
+            let rankClass = '';
+            if (classroom.rank <= 3) {
+              rankClass = 'rank-1';
+            } else if (classroom.rank <= 6) {
+              rankClass = 'rank-bottom';
+            } else if (classroom.rank > gradeStats.totalClassrooms - 3) {
+              rankClass = 'rank-warning';
+            }
+            const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
+                              classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
+            // 格式化分數：正值顯示正號
+            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            html += '<tr>';
+            html += '<td><span class="rank-badge ' + (rankClass || '') + '">第' + classroom.rank + '名</span></td>';
+            html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
+            html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
+            html += '<td>' + classroom.recordCount + ' 筆</td>';
+            html += '</tr>';
+          });
+          html += '</tbody></table>';
+          html += '</div>';
+          html += '</div>';
+        }
+        
+        html += '</div>';
+      });
+      
+      semesterModalContent.innerHTML = html;
+      semesterModalOverlay.style.display = 'flex';
+    }
+    
+    // 顯示週統計（改為使用 Modal 顯示）
+    function displayWeeklyStatistics(result) {
+      const statistics = result.statistics || {};
+      const grades = ['一年級', '二年級', '三年級'];
+      
+      let html = '<p style="text-align: center; color: #666; margin-bottom: 20px; font-size: 16px; font-weight: bold;">';
+      html += '統計期間：' + result.weekStart + ' ~ ' + result.weekEnd;
+      html += '</p>';
+      
+      grades.forEach(function(grade) {
+        if (!statistics[grade]) {
+          html += '<div class="weekly-stats-grade">';
+          html += '<h3>' + grade + '</h3>';
+          html += '<p style="color: #999; text-align: center; padding: 20px;">本週無評分記錄</p>';
+          html += '</div>';
+          return;
+        }
+        
+        const gradeStats = statistics[grade];
+        html += '<div class="weekly-stats-grade">';
+        html += '<h3>' + grade + '（共 ' + gradeStats.totalClassrooms + ' 間教室）</h3>';
+        
+        // 週成績前三名
+        if (gradeStats.top3 && gradeStats.top3.length > 0) {
+          html += '<div class="weekly-stats-group">';
+          html += '<h4>🏆 前三名</h4>';
+          html += '<table class="weekly-stats-table">';
+          html += '<thead><tr><th>名次</th><th>教室</th><th>總分</th><th>記錄數</th></tr></thead>';
+          html += '<tbody>';
+          gradeStats.top3.forEach(function(classroom) {
+            // 前三名使用金色底色
+            const rankClass = 'rank-1';
+            const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
+                              classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
+            // 格式化分數：正值顯示正號
+            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            html += '<tr>';
+            html += '<td><span class="rank-badge ' + rankClass + '">第' + classroom.rank + '名</span></td>';
+            html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
+            html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
+            html += '<td>' + classroom.recordCount + ' 筆</td>';
+            html += '</tr>';
+          });
+          html += '</tbody></table>';
+          html += '</div>';
+        }
+        
+        // 第四至六名
+        if (gradeStats.excellent3 && gradeStats.excellent3.length > 0) {
+          html += '<div class="weekly-stats-group">';
+          html += '<h4>⭐ 第四至六名</h4>';
+          html += '<table class="weekly-stats-table">';
+          html += '<thead><tr><th>名次</th><th>教室</th><th>總分</th><th>記錄數</th></tr></thead>';
+          html += '<tbody>';
+          gradeStats.excellent3.forEach(function(classroom) {
+            const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
+                              classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
+            // 格式化分數：正值顯示正號
+            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            html += '<tr>';
+            html += '<td><span class="rank-badge rank-bottom">第' + classroom.rank + '名</span></td>';
+            html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
+            html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
+            html += '<td>' + classroom.recordCount + ' 筆</td>';
+            html += '</tr>';
+          });
+          html += '</tbody></table>';
+          html += '</div>';
+        }
+        
+        // 待改進
+        if (gradeStats.bottom3 && gradeStats.bottom3.length > 0) {
+          html += '<div class="weekly-stats-group">';
+          html += '<h4>⚠️ 待改進</h4>';
+          html += '<table class="weekly-stats-table">';
+          html += '<thead><tr><th>名次</th><th>教室</th><th>總分</th><th>記錄數</th></tr></thead>';
+          html += '<tbody>';
+          gradeStats.bottom3.forEach(function(classroom) {
+            const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
+                              classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
+            // 格式化分數：正值顯示正號
+            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            html += '<tr>';
+            html += '<td><span class="rank-badge rank-warning">第' + classroom.rank + '名</span></td>';
+            html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
+            html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
+            html += '<td>' + classroom.recordCount + ' 筆</td>';
+            html += '</tr>';
+          });
+          html += '</tbody></table>';
+          html += '</div>';
+        }
+        
+        html += '</div>';
+      });
+      
+      openWeeklyResultModal('每週統計結果', html);
+    }
+    
+    // 顯示訊息
+    function showMessage(message, type) {
+      try {
+        const messageDiv = document.getElementById('message');
+        if (!messageDiv) {
+          console.error('找不到 message 元素');
+          return;
+        }
+        messageDiv.textContent = message || '';
+        messageDiv.className = 'message ' + (type || 'info');
+        messageDiv.style.display = 'block';
+        
+        // 3秒後自動隱藏
+        setTimeout(function() {
+          if (messageDiv) {
+            messageDiv.style.display = 'none';
+          }
+        }, 3000);
+      } catch (err) {
+        console.error('顯示訊息時發生錯誤：', err);
+      }
+    }
+    
+    // 全域錯誤處理
+    window.addEventListener('error', function(event) {
+      console.error('發生未捕獲的錯誤：', event.error);
+      showMessage('發生錯誤：' + (event.error && event.error.message ? event.error.message : '未知錯誤'), 'error');
+    });
+  </script>
+</body>
+</html>
+
