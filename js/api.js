@@ -1,13 +1,9 @@
 /**
- * 透過隱藏 iframe 呼叫 Apps Script（google.script.run），避開 GitHub Pages 的 CORS / POST 轉址問題。
+ * 呼叫 Apps Script Web App（GET / JSONP / POST）。
  * 並提供 google.script.run 相容介面，讓原有前端程式幾乎不用改呼叫方式。
  */
 (function (global) {
-  var pending = {};
   var callId = 0;
-  var iframe = null;
-  var iframeReady = false;
-  var readyWaiters = [];
 
   function getUrl() {
     var cfg = global.APP_CONFIG || {};
@@ -19,108 +15,132 @@
     return !!url && url.indexOf('YOUR_DEPLOYMENT_ID') === -1 && /^https:\/\/script\.google\.com\//.test(url);
   }
 
-  function showConfigError() {
+  function showConfigError(text) {
     if (!document.body) return;
-    if (document.getElementById('gas-config-warning')) return;
-    var bar = document.createElement('div');
-    bar.id = 'gas-config-warning';
-    bar.style.cssText = 'position:sticky;top:0;z-index:9999;background:#c62828;color:#fff;padding:12px 16px;text-align:center;font-family:"Microsoft JhengHei",Arial,sans-serif;';
-    bar.textContent = '尚未設定後端網址：請開啟 js/config.js，填入 Google Apps Script Web App 網址。';
-    document.body.insertBefore(bar, document.body.firstChild);
-  }
-
-  function rejectReadyWaiters(err) {
-    var waiters = readyWaiters.slice();
-    readyWaiters = [];
-    waiters.forEach(function (item) {
-      clearTimeout(item.timer);
-      item.reject(err);
-    });
-  }
-
-  function resolveReadyWaiters() {
-    var waiters = readyWaiters.slice();
-    readyWaiters = [];
-    waiters.forEach(function (item) {
-      clearTimeout(item.timer);
-      item.resolve();
-    });
-  }
-
-  function ensureIframe() {
-    if (iframe) return iframe;
-    iframe = document.createElement('iframe');
-    iframe.id = 'gas-api-bridge';
-    iframe.title = 'Google Apps Script bridge';
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none;';
-    iframe.src = getUrl() + '?page=bridge';
-    (document.body || document.documentElement).appendChild(iframe);
-    return iframe;
-  }
-
-  function waitForBridge() {
-    if (iframeReady) return Promise.resolve();
-    if (!isConfigured()) {
-      if (document.body) showConfigError();
-      else document.addEventListener('DOMContentLoaded', showConfigError);
-      return Promise.reject(new Error('尚未設定 Apps Script Web App 網址（js/config.js）'));
+    var bar = document.getElementById('gas-config-warning');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'gas-config-warning';
+      bar.style.cssText = 'position:sticky;top:0;z-index:9999;background:#c62828;color:#fff;padding:12px 16px;text-align:center;font-family:"Microsoft JhengHei",Arial,sans-serif;';
+      document.body.insertBefore(bar, document.body.firstChild);
     }
+    bar.textContent = text || '尚未設定後端網址：請開啟 js/config.js，填入 Google Apps Script Web App 網址。';
+  }
 
-    ensureIframe();
+  function getAuthPassword() {
+    try {
+      return sessionStorage.getItem('SCHOOL_SCORE_AUTH') || '';
+    } catch (err) {
+      return '';
+    }
+  }
+
+  function buildPayload(action, args) {
+    return {
+      action: action,
+      args: args || [],
+      authPassword: getAuthPassword()
+    };
+  }
+
+  function unwrap(data) {
+    if (data && data.__exception) {
+      throw new Error(data.message || '後端發生錯誤');
+    }
+    return data;
+  }
+
+  function looksLikeHtml(text) {
+    var s = String(text || '').replace(/^\s+/, '').slice(0, 200).toLowerCase();
+    return s.indexOf('<!doctype') === 0 || s.indexOf('<html') === 0 || s.indexOf('評分結果查詢') >= 0;
+  }
+
+  function parseResponseText(text) {
+    if (looksLikeHtml(text)) {
+      throw new Error('後端仍是舊版網頁，不是 API。請把專案裡的 Code.gs 貼到 Apps Script，再「部署 → 管理部署 → 編輯 → 新版本」。');
+    }
+    var data;
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      throw new Error('後端回傳不是有效 JSON，請確認已部署最新 Code.gs');
+    }
+    return unwrap(data);
+  }
+
+  function fetchGet(payload) {
+    var url = getUrl() + '?payload=' + encodeURIComponent(JSON.stringify(payload));
+    return fetch(url, { method: 'GET', redirect: 'follow', credentials: 'omit' })
+      .then(function (res) { return res.text(); })
+      .then(parseResponseText);
+  }
+
+  function fetchPost(payload) {
+    return fetch(getUrl(), {
+      method: 'POST',
+      redirect: 'follow',
+      credentials: 'omit',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    })
+      .then(function (res) { return res.text(); })
+      .then(parseResponseText);
+  }
+
+  function jsonpGet(payload) {
     return new Promise(function (resolve, reject) {
+      var cb = 'schoolScoreCb' + (++callId) + '_' + Date.now();
+      var script = document.createElement('script');
       var timer = setTimeout(function () {
-        reject(new Error('後端橋接頁載入逾時，請確認 Web App 已部署，且存取權為「任何人」。'));
-      }, 20000);
-      readyWaiters.push({ resolve: resolve, reject: reject, timer: timer });
+        cleanup();
+        reject(new Error('後端沒有回應。請把專案裡的 Code.gs 貼到 Apps Script，再部署「新版本」，存取權選「任何人」。'));
+      }, 25000);
+
+      function cleanup() {
+        clearTimeout(timer);
+        try { delete global[cb]; } catch (err) { global[cb] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+
+      global[cb] = function (data) {
+        cleanup();
+        try {
+          resolve(unwrap(data));
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      script.onerror = function () {
+        cleanup();
+        reject(new Error('無法連到後端，請確認 Web App 網址與存取權為「任何人」。'));
+      };
+
+      var url = getUrl()
+        + '?payload=' + encodeURIComponent(JSON.stringify(payload))
+        + '&callback=' + encodeURIComponent(cb);
+      script.src = url;
+      document.head.appendChild(script);
     });
   }
 
   function callApi(action, args) {
-    return waitForBridge().then(function () {
-      return new Promise(function (resolve, reject) {
-        var id = 'c' + (++callId);
-        pending[id] = { resolve: resolve, reject: reject };
-        var frameWindow = iframe && iframe.contentWindow;
-        if (!frameWindow) {
-          delete pending[id];
-          reject(new Error('後端橋接 iframe 尚未就緒'));
-          return;
-        }
-        frameWindow.postMessage({
-          type: 'gas-call',
-          id: id,
-          action: action,
-          args: args || [],
-          authPassword: (function () {
-            try { return sessionStorage.getItem('SCHOOL_SCORE_AUTH') || ''; }
-            catch (err) { return ''; }
-          })()
-        }, '*');
-        setTimeout(function () {
-          if (!pending[id]) return;
-          delete pending[id];
-          reject(new Error('呼叫後端逾時：' + action));
-        }, 180000);
-      });
+    if (!isConfigured()) {
+      showConfigError();
+      return Promise.reject(new Error('尚未設定 Apps Script Web App 網址（js/config.js）'));
+    }
+
+    var payload = buildPayload(action, args);
+    var body = JSON.stringify(payload);
+    var useGet = body.length < 1800;
+
+    var start = useGet ? fetchGet(payload) : fetchPost(payload);
+    return start.catch(function (err) {
+      if (err && String(err.message).indexOf('舊版網頁') >= 0) throw err;
+      if (useGet) return jsonpGet(payload);
+      throw err;
     });
   }
-
-  global.addEventListener('message', function (e) {
-    var msg = e.data || {};
-    if (!msg || typeof msg !== 'object') return;
-    if (msg.type === 'gas-ready') {
-      iframeReady = true;
-      resolveReadyWaiters();
-      return;
-    }
-    if (msg.type !== 'gas-result') return;
-    var item = pending[msg.id];
-    if (!item) return;
-    delete pending[msg.id];
-    if (msg.ok) item.resolve(msg.result);
-    else item.reject(new Error(msg.message || '後端發生錯誤'));
-  });
 
   function createRunner(handlers) {
     handlers = handlers || {};
@@ -153,11 +173,4 @@
   global.google.script = global.google.script || {};
   global.google.script.run = createRunner({});
   global.callSchoolApi = callApi;
-
-  function boot() {
-    if (isConfigured()) ensureIframe();
-    else showConfigError();
-  }
-  if (document.body) boot();
-  else document.addEventListener('DOMContentLoaded', boot);
 })(window);

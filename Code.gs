@@ -2631,28 +2631,43 @@ function doPost(e) {
   return handleApiRequest(e);
 }
 
-function jsonOutput_(data) {
+function jsonOutput_(data, callback) {
+  const json = JSON.stringify(data);
+  if (callback) {
+    const safeName = String(callback).replace(/[^A-Za-z0-9_$.]/g, '');
+    return ContentService
+      .createTextOutput(safeName + '(' + json + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
   return ContentService
-    .createTextOutput(JSON.stringify(data))
+    .createTextOutput(json)
     .setMimeType(ContentService.MimeType.JSON);
 }
 
 function handleApiRequest(e) {
+  let callback = '';
   try {
     let request = {};
+    if (e && e.parameter && e.parameter.callback) {
+      callback = e.parameter.callback;
+    }
     if (e && e.postData && e.postData.contents) {
       request = JSON.parse(e.postData.contents);
     } else if (e && e.parameter) {
-      request = {};
-      const keys = Object.keys(e.parameter);
-      for (let i = 0; i < keys.length; i++) {
-        request[keys[i]] = e.parameter[keys[i]];
-      }
-      if (typeof request.args === 'string') {
-        try {
-          request.args = JSON.parse(request.args);
-        } catch (parseErr) {
-          request.args = [];
+      if (e.parameter.payload) {
+        request = JSON.parse(e.parameter.payload);
+      } else {
+        request = {};
+        const keys = Object.keys(e.parameter);
+        for (let i = 0; i < keys.length; i++) {
+          request[keys[i]] = e.parameter[keys[i]];
+        }
+        if (typeof request.args === 'string') {
+          try {
+            request.args = JSON.parse(request.args);
+          } catch (parseErr) {
+            request.args = [];
+          }
         }
       }
     }
@@ -2661,13 +2676,13 @@ function handleApiRequest(e) {
     const args = Array.isArray(request.args) ? request.args : [];
     const authPassword = request.authPassword || '';
     const result = dispatchAction_(action, args, authPassword);
-    return jsonOutput_(result);
+    return jsonOutput_(result, callback);
   } catch (error) {
     return jsonOutput_({
       __exception: true,
       success: false,
       message: error.message || error.toString()
-    });
+    }, callback);
   }
 }
 
