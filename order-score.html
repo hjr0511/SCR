@@ -80,6 +80,7 @@
     @media (max-width: 768px) {
       body {
         padding: 5px;
+        font-size: 18px;
       }
       
       .container {
@@ -88,7 +89,7 @@
       }
       
       h1 {
-        font-size: 20px;
+        font-size: 24px;
         margin-bottom: 15px;
         padding-bottom: 8px;
       }
@@ -103,13 +104,31 @@
       }
       
       label {
-        font-size: 14px;
+        font-size: 17px;
         margin-bottom: 6px;
       }
       
       select, input[type="text"], input[type="number"], textarea {
-        padding: 10px;
-        font-size: 16px; /* 防止 iOS 自動縮放 */
+        padding: 12px;
+        font-size: 18px; /* 防止 iOS 自動縮放，並放大可讀性 */
+      }
+      
+      .check-row {
+        font-size: 18px;
+      }
+      
+      .check-row.nap-counter > label {
+        font-size: 17px;
+      }
+      
+      .num-stepper input[type="number"] {
+        font-size: 18px;
+        width: 58px;
+      }
+      
+      .num-stepper-btn {
+        width: 44px;
+        font-size: 16px;
       }
       
       .photo-section {
@@ -130,8 +149,8 @@
         width: 100%;
         margin-right: 0;
         margin-top: 8px;
-        padding: 12px;
-        font-size: 15px;
+        padding: 14px;
+        font-size: 17px;
       }
       
       .camera-btn:first-of-type {
@@ -139,31 +158,31 @@
       }
       
       .score-summary {
-        padding: 12px;
-        font-size: 14px;
+        padding: 14px;
+        font-size: 17px;
       }
       
       .score-summary strong {
-        font-size: 16px;
+        font-size: 19px;
       }
       
       .score-summary.total {
-        font-size: 16px;
+        font-size: 19px;
       }
       
       .submit-btn {
-        padding: 12px;
-        font-size: 16px;
+        padding: 14px;
+        font-size: 19px;
         margin-top: 15px;
       }
       
       .info-text {
-        font-size: 12px;
+        font-size: 15px;
       }
       
       .grade-info {
-        font-size: 12px;
-        padding: 8px;
+        font-size: 15px;
+        padding: 10px;
       }
     }
     
@@ -173,7 +192,7 @@
       }
       
       h1 {
-        font-size: 18px;
+        font-size: 22px;
       }
       
       .photo-preview {
