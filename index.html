@@ -93,5 +93,45 @@
     </div>
     <p class="note">各組請用自己的書籤進入；密碼與試算表不相通。</p>
   </div>
+  <script src="js/config.js"></script>
+  <script>
+    window.WARM_QUEUE = window.WARM_QUEUE || [];
+    if (window.APP_CONFIG && window.APP_CONFIG.GAS_WEB_APP_URL) {
+      window.WARM_QUEUE.push({
+        url: window.APP_CONFIG.GAS_WEB_APP_URL,
+        key: window.APP_CONFIG.AUTH_STORAGE_KEY || 'SCHOOL_SCORE_AUTH'
+      });
+    }
+  </script>
+  <script src="js/config-order.js"></script>
+  <script>
+    if (window.APP_CONFIG && window.APP_CONFIG.GAS_WEB_APP_URL) {
+      window.WARM_QUEUE.push({
+        url: window.APP_CONFIG.GAS_WEB_APP_URL,
+        key: window.APP_CONFIG.AUTH_STORAGE_KEY || 'ORDER_SCORE_AUTH'
+      });
+    }
+    (window.WARM_QUEUE || []).forEach(function (item) {
+      var cb = 'warmCb' + Date.now() + '_' + Math.random().toString(36).slice(2);
+      var script = document.createElement('script');
+      window[cb] = function (data) {
+        try { delete window[cb]; } catch (err) {}
+        if (Array.isArray(data) && data.length) {
+          try {
+            localStorage.setItem(item.key + '_CLASSROOMS', JSON.stringify({ ts: Date.now(), list: data }));
+          } catch (err) {}
+        }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      };
+      script.onerror = function () {
+        try { delete window[cb]; } catch (err) {}
+        if (script.parentNode) script.parentNode.removeChild(script);
+      };
+      script.src = String(item.url).replace(/\/+$/, '') +
+        '?action=getAllClassrooms&args=' + encodeURIComponent('[]') +
+        '&callback=' + encodeURIComponent(cb);
+      document.head.appendChild(script);
+    });
+  </script>
 </body>
 </html>

@@ -886,6 +886,12 @@
       AREA: 'orderArea',
       TIME_SLOT: 'orderTimeSlot'
     };
+
+    // 一進頁就向秩序後端要教室清單並寫入快取，設定完成後下拉才不會空等
+    google.script.run
+      .withSuccessHandler(function () {})
+      .withFailureHandler(function () {})
+      .getAllClassrooms();
     
     // 儲存表單資料到 localStorage
     function saveFormData() {
@@ -1661,6 +1667,9 @@
       
       gradeInfo.textContent = '老師或生輔組可以選擇所有年級的教室';
       gradeInfo.style.display = 'block';
+      if (select && select.options.length <= 1) {
+        select.innerHTML = '<option value="">載入教室中…</option>';
+      }
       
       google.script.run
         .withSuccessHandler(function(classrooms) {
