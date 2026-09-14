@@ -350,33 +350,21 @@
 
   function apiRequest(payload, timeoutMs) {
     var waitMs = timeoutMs || apiTimeoutFor(payload && payload.action);
-    var action = payload && payload.action;
-    var hedgeMs = (action === 'ping' || action === 'verifyScoreSystemPassword') ? 2000 : 0;
     return new Promise(function (resolve, reject) {
       var settled = false;
-      var hedgeTimer = null;
+      var failed = 0;
       function ok(value) {
         if (settled) return;
         settled = true;
-        if (hedgeTimer) clearTimeout(hedgeTimer);
         resolve(value);
       }
-      function fail(err) {
+      function oneFail(err) {
+        failed += 1;
         if (settled) return;
-        settled = true;
-        if (hedgeTimer) clearTimeout(hedgeTimer);
-        reject(err);
+        if (failed >= 2) reject(err);
       }
-      fetchGasGet(payload, Math.min(8000, waitMs)).then(ok, function () {
-        if (settled) return;
-        jsonpGetRetry(payload, waitMs, 1).then(ok, fail);
-      });
-      if (hedgeMs) {
-        hedgeTimer = setTimeout(function () {
-          if (settled) return;
-          jsonpGet(payload, waitMs).then(ok, function () {});
-        }, hedgeMs);
-      }
+      fetchGasGet(payload, Math.min(6000, waitMs)).then(ok, oneFail);
+      jsonpGet(payload, waitMs).then(ok, oneFail);
     });
   }
 
@@ -421,9 +409,9 @@
 
     function sendChunk(chunkIndex, attempt) {
       var part = data.substr(chunkIndex * chunkSize, chunkSize);
-      var waitMs = chunkIndex === 0 ? (attempt === 0 ? 28000 : 20000) : 15000;
-      var maxAttempt = chunkIndex === 0 ? 2 : 1;
-      return apiRequest(buildPayload('uploadPhotoChunk', [filename, chunkIndex, total, part]), waitMs).catch(function (err) {
+      var waitMs = chunkIndex === 0 ? 15000 : 12000;
+      var maxAttempt = 1;
+      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, chunkIndex, total, part]), waitMs).catch(function (err) {
         if (attempt >= maxAttempt) throw err;
         return delay(400).then(function () {
           return sendChunk(chunkIndex, attempt + 1);
@@ -434,10 +422,10 @@
     function sendNext() {
       if (index >= total) {
         return delay(300).then(function () {
-          return apiRequest(buildPayload('finalizePhotoUpload', [filename]), 30000);
+          return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000);
         }).catch(function () {
           return delay(500).then(function () {
-            return apiRequest(buildPayload('finalizePhotoUpload', [filename]), 30000);
+            return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000);
           });
         });
       }
@@ -457,19 +445,8 @@
     if (!getAuthPassword()) {
       return Promise.reject(new Error('未授權：請先從查詢頁輸入密碼進入評分系統'));
     }
-    var payload = buildPayload('uploadSinglePhoto', [base64, filename]);
     var run = uploadChain.then(function () {
-      return postTextJson(payload, 40000).catch(function (err) {
-        var msg = String((err && err.message) || err || '');
-        if (msg.indexOf('沒有回應') >= 0) {
-          return uploadPhotoByChunks(base64, filename);
-        }
-        return delay(250).then(function () {
-          return postTextJson(payload, 20000);
-        }).catch(function () {
-          return uploadPhotoByChunks(base64, filename);
-        });
-      });
+      return uploadPhotoByChunks(base64, filename);
     });
     uploadChain = run.then(function () {}, function () {});
     return run;

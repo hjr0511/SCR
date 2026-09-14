@@ -1164,7 +1164,7 @@
       loadFormData();
       // 再次檢查並設定學生身份（在資料載入後）
       checkLoginType();
-      warmupPhotoUpload();
+      setTimeout(warmupPhotoUpload, 3000);
     };
 
     function warmupPhotoUpload() {
@@ -1435,6 +1435,11 @@
     
     // 載入初始資料
     function loadInitialData() {
+      var classroomsPrefetched = false;
+      if (isTeacherLogin || isAdminLogin) {
+        classroomsPrefetched = true;
+        loadAllClassrooms();
+      }
       // 載入年級（modal 和隱藏欄位）
       google.script.run
         .withSuccessHandler(function(grades) {
@@ -1460,7 +1465,7 @@
           } else if (!isEvaluatorGradeRequired(savedTypeForGrade)) {
             hiddenInput.value = '';
             modalSelect.value = '';
-            loadAllClassrooms();
+            if (!classroomsPrefetched) loadAllClassrooms();
           }
         })
         .getGrades();
