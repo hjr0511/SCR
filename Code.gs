@@ -2742,7 +2742,7 @@ function jsonOutput_(data, callback, embed, msgId) {
       result: isErr ? null : data,
       message: isErr ? (data.message || '後端發生錯誤') : ''
     };
-    const html = '<!doctype html><html><body><script>try{parent.postMessage(' + JSON.stringify(msg) + ',"*");}catch(e){}</script></body></html>';
+    const html = '<!doctype html><html><body><script>(function(){var m=' + JSON.stringify(msg) + ';var w=[window.parent,window.top];try{if(window.parent&&window.parent.parent)w.push(window.parent.parent);}catch(e){}for(var i=0;i<w.length;i++){try{w[i].postMessage(m,"*");}catch(err){}}})();</script></body></html>';
     return HtmlService.createHtmlOutput(html)
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }

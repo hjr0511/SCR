@@ -422,9 +422,7 @@
       var pause = photoUploadCount === 0 ? Promise.resolve() : delay(400);
       photoUploadCount += 1;
       return pause.then(function () {
-        return formPost(buildPayload('uploadSinglePhoto', [base64, filename]), 15000).catch(function () {
-          return uploadPhotoByChunks(base64, filename);
-        });
+        return formPost(buildPayload('uploadSinglePhoto', [base64, filename]), 20000);
       });
     });
     uploadChain = run.then(function () {}, function () {});
