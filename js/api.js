@@ -281,6 +281,65 @@
     });
   }
 
+  function parseGasBody(text) {
+    var raw = String(text || '').trim();
+    if (!raw) throw new Error('後端沒有回應');
+    if (raw.charAt(0) === '{' || raw.charAt(0) === '[') {
+      return unwrap(JSON.parse(raw));
+    }
+    var start = raw.indexOf('(');
+    var end = raw.lastIndexOf(')');
+    if (start >= 0 && end > start) {
+      return unwrap(JSON.parse(raw.substring(start + 1, end)));
+    }
+    throw new Error('後端回傳格式無法解析');
+  }
+
+  function fetchGasGet(payload, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      if (typeof fetch !== 'function') {
+        reject(new Error('NO_FETCH'));
+        return;
+      }
+      var qs = [
+        'action=' + encodeURIComponent(payload.action || ''),
+        'args=' + encodeURIComponent(JSON.stringify(payload.args || [])),
+        'callback=' + encodeURIComponent('schoolScoreFetch')
+      ];
+      if (payload.authPassword) qs.push('authPassword=' + encodeURIComponent(payload.authPassword));
+      var url = getUrl() + '?' + qs.join('&') + '&_=' + Date.now();
+      if (url.length > 18000) {
+        reject(new Error('URL_TOO_LONG'));
+        return;
+      }
+      var settled = false;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        reject(new Error('後端沒有回應。請把專案裡的 Code.gs 貼到 Apps Script，再部署「新版本」。'));
+      }, timeoutMs || 40000);
+      fetch(url, {
+        method: 'GET',
+        mode: 'cors',
+        redirect: 'follow',
+        credentials: 'omit'
+      }).then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.text();
+      }).then(function (text) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(parseGasBody(text));
+      }).catch(function (err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  }
+
   function apiTimeoutFor(action) {
     if (action === 'verifyScoreSystemPassword' || action === 'ping') return 20000;
     if (action === 'getAllClassrooms' || action === 'getScoreRecords') return 90000;
@@ -291,7 +350,7 @@
 
   function apiRequest(payload, timeoutMs) {
     var waitMs = timeoutMs || apiTimeoutFor(payload && payload.action);
-    return postTextJson(payload, waitMs).catch(function () {
+    return fetchGasGet(payload, waitMs).catch(function () {
       return jsonpGetRetry(payload, waitMs, 1);
     });
   }
