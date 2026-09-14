@@ -186,24 +186,34 @@
       var cb = 'schoolScoreCb' + (++callId) + '_' + Date.now();
       var script = document.createElement('script');
       var waitMs = timeoutMs || 60000;
+      var settled = false;
       var timer = setTimeout(function () {
-        cleanup();
-        reject(new Error('後端沒有回應。請把專案裡的 Code.gs 貼到 Apps Script，再部署「新版本」。'));
+        fail(new Error('後端沒有回應。請把專案裡的 Code.gs 貼到 Apps Script，再部署「新版本」。'));
       }, waitMs);
 
       function cleanup() {
         clearTimeout(timer);
-        try { delete global[cb]; } catch (err) { global[cb] = undefined; }
+        global[cb] = function () {};
         if (script.parentNode) script.parentNode.removeChild(script);
       }
 
+      function fail(err) {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(err);
+      }
+
       global[cb] = function (data) {
+        if (settled) return;
+        settled = true;
         cleanup();
         try { resolve(unwrap(data)); } catch (err) { reject(err); }
       };
       script.onerror = function () {
-        cleanup();
-        reject(new Error('連線暫時失敗，請再試一次。'));
+        setTimeout(function () {
+          fail(new Error('連線暫時失敗，請再試一次。'));
+        }, 2000);
       };
       var qs = [
         'action=' + encodeURIComponent(payload.action || ''),
