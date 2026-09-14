@@ -210,11 +210,7 @@
         cleanup();
         try { resolve(unwrap(data)); } catch (err) { reject(err); }
       };
-      script.onerror = function () {
-        setTimeout(function () {
-          fail(new Error('連線暫時失敗，請再試一次。'));
-        }, 1500);
-      };
+      script.onerror = function () {};
       var qs = [
         'action=' + encodeURIComponent(payload.action || ''),
         'args=' + encodeURIComponent(JSON.stringify(payload.args || [])),
@@ -421,13 +417,18 @@
   }
 
   var uploadChain = Promise.resolve();
+  var photoUploadCount = 0;
 
   function uploadSinglePhotoFast(base64, filename) {
     if (!getAuthPassword()) {
       return Promise.reject(new Error('未授權：請先從查詢頁輸入密碼進入評分系統'));
     }
     var run = uploadChain.then(function () {
-      return uploadPhotoByChunks(base64, filename);
+      var pause = photoUploadCount === 0 ? Promise.resolve() : delay(400);
+      photoUploadCount += 1;
+      return pause.then(function () {
+        return uploadPhotoByChunks(base64, filename);
+      });
     });
     uploadChain = run.then(function () {}, function () {});
     return run;
