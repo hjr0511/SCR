@@ -1,6 +1,6 @@
 /**
  * 學校秩序評分系統（生輔組）
- * 午休 A–G 加扣分、集會／巡堂登記；可附上佐證照片（不另扣分）。
+ * 午休 A–G 加扣分、集會／巡堂登記；可即拍即上傳佐證照片（不另扣分）。
  *
  * 請綁在「秩序專用」Google 試算表，部署成網頁應用程式：
  * 執行身分＝我，存取權＝任何人。前端網址請填入 js/config-order.js。
@@ -2866,6 +2866,8 @@ function dispatchAction_(action, args, authPassword) {
       return getClassrooms(args[0]);
     case 'getAllClassrooms':
       return getAllClassrooms();
+    case 'getPhotoFolderLink':
+      return getPhotoFolderLink();
     case 'uploadSinglePhoto':
       return uploadSinglePhoto(args[0], args[1]);
     case 'uploadPhotoChunk':

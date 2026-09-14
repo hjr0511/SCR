@@ -114,7 +114,7 @@
     });
   }
 
-  function postCall(action, args) {
+  function postCall(action, args, timeoutMs) {
     return new Promise(function (resolve, reject) {
       var id = 'c' + (++callId);
       pending[id] = { resolve: resolve, reject: reject };
@@ -129,7 +129,7 @@
         if (!pending[id]) return;
         delete pending[id];
         reject(new Error('呼叫後端逾時：' + action));
-      }, 120000);
+      }, timeoutMs || 120000);
     });
   }
 
@@ -207,7 +207,7 @@
     });
   }
 
-  var iframeMissedOnce = false;
+  var iframeWarmed = false;
 
   function uploadPhotoByChunks(base64, filename) {
     var chunkSize = 3200;
@@ -221,33 +221,31 @@
       tasks.push((function (index) {
         return function () {
           var part = data.substr(index * chunkSize, chunkSize);
-          return jsonpGet(buildPayload('uploadPhotoChunk', [filename, index, total, part]));
+          return jsonpGet(buildPayload('uploadPhotoChunk', [filename, index, total, part]), 20000);
         };
       })(n));
     }
     return runPool(tasks, 10).then(function () {
-      return jsonpGet(buildPayload('finalizePhotoUpload', [filename]));
+      return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000);
     });
   }
 
   function uploadSinglePhotoFast(base64, filename) {
     ensureIframe();
     if (iframeReady) {
-      return postCall('uploadSinglePhoto', [base64, filename]).catch(function () {
+      return postCall('uploadSinglePhoto', [base64, filename], 25000).catch(function () {
         return uploadPhotoByChunks(base64, filename);
       });
     }
-    if (iframeFailed || iframeMissedOnce) {
+    if (iframeFailed) {
       return uploadPhotoByChunks(base64, filename);
     }
-    return waitForBridge(400, false).then(function (ok) {
+    return waitForBridge(10000, false).then(function (ok) {
       if (!ok || !iframe || !iframe.contentWindow) {
-        iframeMissedOnce = true;
         return uploadPhotoByChunks(base64, filename);
       }
-      return postCall('uploadSinglePhoto', [base64, filename]);
+      return postCall('uploadSinglePhoto', [base64, filename], 25000);
     }).catch(function () {
-      iframeMissedOnce = true;
       return uploadPhotoByChunks(base64, filename);
     });
   }
@@ -295,10 +293,13 @@
     if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'gas-ready') {
       iframeReady = true;
-      iframeMissedOnce = false;
       readyWaiters.splice(0).forEach(function (item) {
         if (item.resolve) item.resolve();
       });
+      if (!iframeWarmed) {
+        iframeWarmed = true;
+        postCall('ping', [], 15000).catch(function () {});
+      }
       return;
     }
     if (msg.type !== 'gas-result') return;
