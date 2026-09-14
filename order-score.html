@@ -358,49 +358,33 @@
       background-color: #ccc;
       cursor: not-allowed;
     }
-
-    .skip-btn {
-      width: 100%;
-      padding: 12px;
-      background-color: #fff;
-      color: #546e7a;
-      border: 2px solid #cfd8dc;
-      border-radius: 5px;
-      font-size: 16px;
-      font-weight: bold;
-      cursor: pointer;
-      margin-top: 10px;
-    }
-
-    .skip-btn:hover {
-      background-color: #eceff1;
-      border-color: #90a4ae;
-    }
     
     .toast-modal {
       display: none;
       position: fixed;
       z-index: 4000;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.4);
-      align-items: center;
-      justify-content: center;
+      left: 50%;
+      top: 12%;
+      transform: translateX(-50%);
+      width: auto;
+      max-width: 90%;
+      height: auto;
+      background: transparent;
+      pointer-events: none;
     }
     .toast-modal.show {
-      display: flex;
+      display: block;
     }
     .toast-modal-box {
       background: #2e7d32;
       color: #fff;
-      padding: 28px 44px;
-      border-radius: 14px;
-      font-size: 28px;
+      padding: 14px 22px;
+      border-radius: 12px;
+      font-size: 18px;
       font-weight: bold;
       text-align: center;
       box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+      line-height: 1.4;
     }
     
     .message {
@@ -825,8 +809,6 @@
       </div>
       
       <button type="submit" class="submit-btn" id="submitBtn">提交評分</button>
-      <button type="button" class="skip-btn" id="skipBtn">跳過此班（不送出）</button>
-      <p class="info-text">這一班沒有加扣分時，請按「跳過此班」，不要提交 0 分。</p>
     </form>
   </div>
 
@@ -1566,11 +1548,6 @@
           e.target.value = '';
         });
       }
-
-      const skipBtn = document.getElementById('skipBtn');
-      if (skipBtn) {
-        skipBtn.addEventListener('click', skipCurrentClassroom);
-      }
       
       ['itemA','itemB','itemNone','itemC','itemD','itemE','itemF','itemG'].forEach(function(id) {
         const el = document.getElementById(id);
@@ -2245,13 +2222,29 @@
       }
     }
     
-    function showUploadSuccessModal() {
+    function showUploadSuccessModal(text) {
       const modal = document.getElementById('uploadSuccessModal');
       if (!modal) return;
+      const box = modal.querySelector('.toast-modal-box');
+      if (box && text) box.textContent = text;
       modal.classList.add('show');
       setTimeout(function() {
         modal.classList.remove('show');
-      }, 1000);
+      }, 1400);
+    }
+
+    function stayOnScoringView() {
+      const classroom = document.getElementById('classroom');
+      const wrap = classroom && classroom.closest ? classroom.closest('.form-group') : classroom;
+      const el = wrap || document.getElementById('napSection');
+      if (!el) return;
+      requestAnimationFrame(function() {
+        try {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch (err) {
+          el.scrollIntoView(true);
+        }
+      });
     }
     
     function goToNextClassroom(classroomName) {
@@ -2290,23 +2283,13 @@
       }
     }
 
-    function skipCurrentClassroom() {
-      const classroomSelect = document.getElementById('classroom');
-      const classroomName = classroomSelect ? classroomSelect.value : '';
-      if (!classroomName) {
-        showMessage('請先選擇教室', 'error');
-        return;
-      }
-      goToNextClassroom(classroomName);
-      resetScoreForm();
-      showMessage('已跳過「' + classroomName + '」，未送出評分', 'success');
-    }
-    
     // 處理提交成功
     function handleSubmitSuccess(result, classroomName) {
-      showUploadSuccessModal();
       goToNextClassroom(classroomName);
       resetScoreForm();
+      const nextName = (document.getElementById('classroom') || {}).value || '';
+      showUploadSuccessModal(nextName ? ('送出成功，接著評「' + nextName + '」') : '送出成功');
+      stayOnScoringView();
     }
     
     // 顯示訊息
