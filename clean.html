@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232196F3'/%3E%3C/svg%3E">
   <title>整潔評分結果查詢</title>
+  <link rel="prefetch" href="score.html">
   <style>
     * {
       margin: 0;
@@ -989,13 +990,26 @@
   <script src="js/api.js"></script>
   <script>
     let allClassrooms = [];
+    let classroomNetworkStarted = false;
+    let holdClassroomNetwork = false;
     
     // 頁面載入時初始化
     window.onload = function() {
       setupEventListeners();
       setupQueryTabs();
       applyWeeklyAdminUi();
-      setTimeout(loadClassrooms, 0);
+      loadClassrooms(false);
+      const classroomSelect = document.getElementById('classroomSelect');
+      function requestClassroomNetwork() {
+        loadClassrooms(true);
+      }
+      if (classroomSelect) {
+        classroomSelect.addEventListener('focus', requestClassroomNetwork);
+        classroomSelect.addEventListener('mousedown', requestClassroomNetwork);
+      }
+      setTimeout(function() {
+        if (!holdClassroomNetwork) loadClassrooms(true);
+      }, 8000);
     };
     
     // 查詢分頁切換：一次只顯示一種查詢
@@ -1022,57 +1036,66 @@
       });
     }
     
-    // 載入教室清單
-    function loadClassrooms() {
+    function applyClassroomOptions(classrooms) {
       try {
+        allClassrooms = classrooms || [];
         const select = document.getElementById('classroomSelect');
-        if (select && select.options.length <= 1) {
-          const loadingOpt = document.createElement('option');
-          loadingOpt.value = '';
-          loadingOpt.textContent = '載入教室中…';
-          loadingOpt.disabled = true;
-          select.appendChild(loadingOpt);
+        if (!select) {
+          console.error('找不到 classroomSelect 元素');
+          return;
         }
+        while (select.options.length > 1) {
+          select.remove(1);
+        }
+        if (allClassrooms.length === 0) {
+          const option = document.createElement('option');
+          option.value = '';
+          option.textContent = '暫無教室資料';
+          select.appendChild(option);
+          return;
+        }
+        allClassrooms.forEach(function(room) {
+          if (room && room.name) {
+            const option = document.createElement('option');
+            option.value = room.name;
+            option.textContent = room.name + (room.id ? ' (' + room.id + ')' : '');
+            select.appendChild(option);
+          }
+        });
+      } catch (err) {
+        console.error('處理教室清單時發生錯誤：', err);
+        showMessage('處理教室清單時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+
+    // 載入教室清單：先畫快取，進評分時不要搶後端
+    function loadClassrooms(forceNetwork) {
+      try {
+        const cached = window.readSchoolClassroomCache && window.readSchoolClassroomCache();
+        if (cached && cached.length) applyClassroomOptions(cached);
+        if (!forceNetwork) {
+          if (!cached || !cached.length) {
+            const select = document.getElementById('classroomSelect');
+            if (select && select.options.length <= 1) {
+              const loadingOpt = document.createElement('option');
+              loadingOpt.value = '';
+              loadingOpt.textContent = '載入教室中…';
+              loadingOpt.disabled = true;
+              select.appendChild(loadingOpt);
+            }
+          }
+          return;
+        }
+        if (holdClassroomNetwork || classroomNetworkStarted) return;
+        classroomNetworkStarted = true;
         google.script.run
           .withSuccessHandler(function(classrooms) {
-            try {
-              allClassrooms = classrooms || [];
-              const select = document.getElementById('classroomSelect');
-              if (!select) {
-                console.error('找不到 classroomSelect 元素');
-                return;
-              }
-              
-              // 清空現有選項（保留第一個預設選項）
-              while (select.options.length > 1) {
-                select.remove(1);
-              }
-              
-              if (allClassrooms.length === 0) {
-                const option = document.createElement('option');
-                option.value = '';
-                option.textContent = '暫無教室資料';
-                select.appendChild(option);
-                showMessage('目前沒有教室資料，請先在工作表中設定教室清單', 'error');
-                return;
-              }
-              
-              allClassrooms.forEach(function(room) {
-                if (room && room.name) {
-                  const option = document.createElement('option');
-                  // 教室編號可能是樓層、會重複，以教室名稱為唯一值
-                  option.value = room.name;
-                  option.textContent = room.name + (room.id ? ' (' + room.id + ')' : '');
-                  select.appendChild(option);
-                }
-              });
-            } catch (err) {
-              console.error('處理教室清單時發生錯誤：', err);
-              showMessage('處理教室清單時發生錯誤：' + (err.message || err.toString()), 'error');
-            }
+            applyClassroomOptions(classrooms);
           })
           .withFailureHandler(function(error) {
+            classroomNetworkStarted = false;
             console.error('載入教室清單失敗：', error);
+            if (cached && cached.length) return;
             const errorMsg = error && error.message ? error.message : (error && error.toString ? error.toString() : '未知錯誤');
             showMessage('載入教室清單失敗：' + errorMsg, 'error');
           })
@@ -1237,24 +1260,30 @@
 
       const enterBtn = document.getElementById('enterScoreSystemBtn');
       if (enterBtn) enterBtn.disabled = true;
+      holdClassroomNetwork = true;
       showMessage('正在驗證密碼…', 'info');
 
       google.script.run
         .withSuccessHandler(function(result) {
-          if (enterBtn) enterBtn.disabled = false;
           if (result.success) {
+            showMessage('密碼正確，正在進入評分…', 'info');
             try {
               sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.AUTH_STORAGE_KEY) || 'SCHOOL_SCORE_AUTH', inputPassword.trim());
               sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE', result.loginType || '');
             } catch (e) {}
             const loginType = result.loginType || '';
             window.location.replace('score.html?loginType=' + encodeURIComponent(loginType));
-          } else {
-            showMessage(result.message || '密碼錯誤，請重新輸入', 'error');
+            return;
           }
+          holdClassroomNetwork = false;
+          if (enterBtn) enterBtn.disabled = false;
+          loadClassrooms(true);
+          showMessage(result.message || '密碼錯誤，請重新輸入', 'error');
         })
         .withFailureHandler(function(error) {
+          holdClassroomNetwork = false;
           if (enterBtn) enterBtn.disabled = false;
+          loadClassrooms(true);
           console.error('驗證密碼錯誤：', error);
           showMessage(error.message || '連線暫時失敗，請再試一次。', 'error');
         })

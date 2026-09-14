@@ -285,15 +285,10 @@
     return 60000;
   }
 
-  var jsonpChain = Promise.resolve();
-
   function apiRequest(payload, timeoutMs) {
     var waitMs = timeoutMs || apiTimeoutFor(payload && payload.action);
-    var run = jsonpChain.then(function () {
-      return jsonpGetRetry(payload, waitMs, 1);
-    });
-    jsonpChain = run.then(function () {}, function () {});
-    return run;
+    var retries = payload && payload.action === 'verifyScoreSystemPassword' ? 0 : 1;
+    return jsonpGetRetry(payload, waitMs, retries);
   }
 
   function runPool(tasks, limit) {
@@ -440,14 +435,25 @@
     return (cfg.AUTH_STORAGE_KEY || 'SCHOOL_SCORE_AUTH') + '_CLASSROOMS';
   }
 
-  function readClassroomCache() {
+  function readClassroomCacheEntry() {
     try {
       var parsed = JSON.parse(localStorage.getItem(classroomCacheKey()) || 'null');
       if (!parsed || !Array.isArray(parsed.list) || !parsed.list.length) return null;
-      return parsed.list;
+      return parsed;
     } catch (err) {
       return null;
     }
+  }
+
+  function readClassroomCache() {
+    var entry = readClassroomCacheEntry();
+    return entry ? entry.list : null;
+  }
+
+  function classroomCacheIsFresh(maxAgeMs) {
+    var entry = readClassroomCacheEntry();
+    if (!entry) return false;
+    return Date.now() - Number(entry.ts || 0) < (maxAgeMs || 180000);
   }
 
   function writeClassroomCache(list) {
@@ -528,6 +534,9 @@
           if (cachedClassrooms && typeof handlers.success === 'function') {
             try { handlers.success(cachedClassrooms); } catch (err) {}
           }
+          if (action === 'getAllClassrooms' && classroomCacheIsFresh(180000)) {
+            return;
+          }
           callApi(action, fnArgs).then(function (result) {
             if (action === 'getAllClassrooms' && Array.isArray(result) && result.length) {
               writeClassroomCache(result);
@@ -549,7 +558,7 @@
   global.google = global.google || {};
   global.google.script = global.google.script || {};
   global.google.script.run = createRunner({});
-  global.callSchoolApi = callApi;
+  global.readSchoolClassroomCache = readClassroomCache;
   global.reviveSchoolApiBridge = reviveBridge;
   global.prepareSchoolApiBridge = prepareBridgeForCamera;
 
