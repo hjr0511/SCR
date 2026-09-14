@@ -194,7 +194,7 @@
       };
       script.onerror = function () {
         cleanup();
-        reject(new Error('無法連到後端，請確認 Web App 存取權為「任何人」。'));
+        reject(new Error('連線暫時失敗，請再試一次。'));
       };
       var qs = [
         'action=' + encodeURIComponent(payload.action || ''),
@@ -203,8 +203,26 @@
       ];
       if (payload.authPassword) qs.push('authPassword=' + encodeURIComponent(payload.authPassword));
       script.async = true;
-      script.src = getUrl() + '?' + qs.join('&');
+      script.src = getUrl() + '?' + qs.join('&') + '&_=' + Date.now();
       document.head.appendChild(script);
+    });
+  }
+
+  function delay(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  function jsonpGetRetry(payload, timeoutMs, retries) {
+    retries = retries == null ? 2 : retries;
+    return jsonpGet(payload, timeoutMs).catch(function (err) {
+      if (retries <= 0) {
+        throw new Error('連線暫時失敗，請再試一次。');
+      }
+      return delay(retries === 2 ? 250 : 700).then(function () {
+        return jsonpGetRetry(payload, timeoutMs, retries - 1);
+      });
     });
   }
 
@@ -347,11 +365,9 @@
       return uploadSinglePhotoFast(args[0], args[1]);
     }
     if (action === 'getAllClassrooms' || action === 'getScoreRecords') {
-      return jsonpGet(buildPayload(action, args), 90000).catch(function () {
-        return jsonpGet(buildPayload(action, args), 90000);
-      });
+      return jsonpGetRetry(buildPayload(action, args), 90000, 2);
     }
-    return jsonpGet(buildPayload(action, args));
+    return jsonpGetRetry(buildPayload(action, args), 60000, 2);
   }
 
   global.addEventListener('message', function (e) {

@@ -1224,11 +1224,9 @@
     
     // 進入評分系統（需要密碼驗證）
     function enterScoreSystem() {
-      // 使用 prompt 輸入密碼
       const inputPassword = prompt('請輸入密碼以進入評分系統：');
       
       if (inputPassword === null) {
-        // 使用者取消輸入
         return;
       }
       
@@ -1236,25 +1234,33 @@
         showMessage('請輸入密碼', 'error');
         return;
       }
-      
-      google.script.run
-        .withSuccessHandler(function(result) {
-          if (result.success) {
-            try {
-              sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.AUTH_STORAGE_KEY) || 'SCHOOL_SCORE_AUTH', inputPassword.trim());
-              sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE', result.loginType || '');
-            } catch (e) {}
-            const loginType = result.loginType || '';
-            window.location.replace('score.html?loginType=' + encodeURIComponent(loginType));
-          } else {
-            showMessage(result.message || '密碼錯誤，請重新輸入', 'error');
-          }
-        })
-        .withFailureHandler(function(error) {
-          console.error('驗證密碼錯誤：', error);
-          showMessage('驗證密碼時發生錯誤：' + (error.message || error.toString()), 'error');
-        })
-        .verifyScoreSystemPassword(inputPassword);
+
+      const enterBtn = document.getElementById('enterScoreSystemBtn');
+      if (enterBtn) enterBtn.disabled = true;
+      showMessage('正在驗證密碼…', 'info');
+
+      setTimeout(function() {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (enterBtn) enterBtn.disabled = false;
+            if (result.success) {
+              try {
+                sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.AUTH_STORAGE_KEY) || 'SCHOOL_SCORE_AUTH', inputPassword.trim());
+                sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE', result.loginType || '');
+              } catch (e) {}
+              const loginType = result.loginType || '';
+              window.location.replace('score.html?loginType=' + encodeURIComponent(loginType));
+            } else {
+              showMessage(result.message || '密碼錯誤，請重新輸入', 'error');
+            }
+          })
+          .withFailureHandler(function(error) {
+            if (enterBtn) enterBtn.disabled = false;
+            console.error('驗證密碼錯誤：', error);
+            showMessage(error.message || '連線暫時失敗，請再試一次。', 'error');
+          })
+          .verifyScoreSystemPassword(inputPassword);
+      }, 300);
     }
     
     // 查詢所有記錄
