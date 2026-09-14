@@ -235,6 +235,42 @@
     });
   }
 
+  function postTextJson(payload, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      if (typeof fetch !== 'function') {
+        reject(new Error('NO_FETCH'));
+        return;
+      }
+      var settled = false;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        reject(new Error('後端沒有回應。請把專案裡的 Code.gs 貼到 Apps Script，再部署「新版本」。'));
+      }, timeoutMs || 40000);
+      fetch(getUrl(), {
+        method: 'POST',
+        mode: 'cors',
+        redirect: 'follow',
+        credentials: 'omit',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      }).then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      }).then(function (data) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(unwrap(data));
+      }).catch(function (err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  }
+
   function runPool(tasks, limit) {
     var i = 0;
     var active = 0;
@@ -267,7 +303,7 @@
   var iframeWarmed = false;
 
   function uploadPhotoByChunks(base64, filename) {
-    var chunkSize = 1500;
+    var chunkSize = 1200;
     var data = String(base64 || '');
     var comma = data.indexOf(',');
     if (comma >= 0) data = data.substring(comma + 1);
@@ -276,9 +312,13 @@
 
     function sendChunk(chunkIndex, attempt) {
       var part = data.substr(chunkIndex * chunkSize, chunkSize);
-      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, chunkIndex, total, part]), 15000).catch(function (err) {
-        if (attempt >= 1) throw err;
-        return sendChunk(chunkIndex, attempt + 1);
+      var waitMs = chunkIndex === 0 ? (attempt === 0 ? 28000 : 20000) : 15000;
+      var maxAttempt = chunkIndex === 0 ? 2 : 1;
+      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, chunkIndex, total, part]), waitMs).catch(function (err) {
+        if (attempt >= maxAttempt) throw err;
+        return delay(400).then(function () {
+          return sendChunk(chunkIndex, attempt + 1);
+        });
       });
     }
 
@@ -308,8 +348,19 @@
     if (!getAuthPassword()) {
       return Promise.reject(new Error('未授權：請先從查詢頁輸入密碼進入評分系統'));
     }
+    var payload = buildPayload('uploadSinglePhoto', [base64, filename]);
     var run = uploadChain.then(function () {
-      return uploadPhotoByChunks(base64, filename);
+      return postTextJson(payload, 40000).catch(function (err) {
+        var msg = String((err && err.message) || err || '');
+        if (msg.indexOf('沒有回應') >= 0) {
+          return uploadPhotoByChunks(base64, filename);
+        }
+        return delay(250).then(function () {
+          return postTextJson(payload, 20000);
+        }).catch(function () {
+          return uploadPhotoByChunks(base64, filename);
+        });
+      });
     });
     uploadChain = run.then(function () {}, function () {});
     return run;
@@ -453,10 +504,13 @@
 
   function onPageHidden() {
     iframeFailed = false;
+    warmPromise = null;
   }
 
   function onPageVisible() {
     iframeFailed = false;
+    warmPromise = null;
+    if (isConfigured()) warmBackend();
   }
   global.addEventListener('pageshow', onPageVisible);
   global.addEventListener('pagehide', onPageHidden);
