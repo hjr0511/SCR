@@ -1170,30 +1170,38 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
     const awardLists = buildHonorAwardLists_(rankedData, grades, config);
     const meta = getHonorWeekMeta_(weekStart);
 
-    const ss = SpreadsheetApp.create('_tmp_honor_form_' + new Date().getTime());
-    const sheet = ss.getSheets()[0];
-    sheet.setName('績優班級');
-    fillHonorFormSheet_(sheet, meta, awardLists, grades, config);
-    SpreadsheetApp.flush();
-
     const pdfName = meta.schoolYear + '-' + meta.semester + '_第' + meta.weekNum + '週' + config.contestShort + '績優班級.pdf';
     trashDriveFilesByName_(pdfName);
 
-    const pdfFile = exportSheetToPdfFile_(ss, sheet, pdfName);
-    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    let pdfFile;
     try {
-      DriveApp.getFileById(ss.getId()).setTrashed(true);
-    } catch (trashErr) {
-      Logger.log('暫存試算表刪除失敗：' + trashErr.toString());
+      pdfFile = exportHonorHtmlToPdfFile_(buildHonorFormHtml_(meta, awardLists, grades, config), pdfName);
+    } catch (htmlErr) {
+      Logger.log('HTML 楷體 PDF 失敗，改用試算表匯出：' + htmlErr.toString());
+      const ss = SpreadsheetApp.create('_tmp_honor_form_' + new Date().getTime());
+      const sheet = ss.getSheets()[0];
+      sheet.setName('績優班級');
+      fillHonorFormSheet_(sheet, meta, awardLists, grades, config);
+      SpreadsheetApp.flush();
+      pdfFile = exportSheetToPdfFile_(ss, sheet, pdfName);
+      try {
+        DriveApp.getFileById(ss.getId()).setTrashed(true);
+      } catch (trashErr) {
+        Logger.log('暫存試算表刪除失敗：' + trashErr.toString());
+      }
     }
+    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
+    const fileId = pdfFile.getId();
     const docUrl = pdfFile.getUrl();
+    const downloadUrl = 'https://drive.google.com/uc?export=download&id=' + fileId;
     Logger.log('績優班級 PDF 已建立：' + pdfName + ' ' + docUrl);
     return {
       success: true,
       message: '已產生每週排名 PDF',
       docUrl: docUrl,
-      fileId: pdfFile.getId(),
+      downloadUrl: downloadUrl,
+      fileId: fileId,
       weekStart: weekly.weekStart,
       weekEnd: weekly.weekEnd
     };
@@ -1425,6 +1433,184 @@ function spaceCjkTitle_(text) {
   return String(text).split('').join(' ');
 }
 
+/** 試算表後備匯出：用中文名稱才對得到 Google 內建楷體 */
+function honorFormSheetFont_() {
+  return '標楷體';
+}
+
+/**
+ * Google 試算表把 DFKai-SB 換成細明體。改由 Google 文件以「標楷體」匯出，
+ * 外觀才接近學務處紙本。
+ */
+function honorFormPdfFont_() {
+  return '標楷體';
+}
+
+function escapeHonorHtml_(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function honorLabelHtml_(label) {
+  const text = String(label || '');
+  const noteIdx = text.indexOf('註');
+  if (noteIdx > 0) {
+    return escapeHonorHtml_(text.substring(0, noteIdx)) +
+      '<span style="font-size:8pt;">' + escapeHonorHtml_(text.substring(noteIdx)) + '</span>';
+  }
+  return escapeHonorHtml_(text);
+}
+
+function honorCellStyle_(extra) {
+  return 'border:1px solid #000;font-family:標楷體,Iansui,DFKai-SB,serif;' +
+    'text-align:center;vertical-align:middle;' + (extra || '');
+}
+
+function buildHonorFormHtml_(meta, awardLists, grades, config) {
+  const title = spaceCjkTitle_('中正高工生活榮譽競賽' + config.contestShort + '評比績優班級');
+  const subtitle = meta.schoolYear + ' 學年度第 ' + meta.semester + ' 學期第 ' + meta.weekNum +
+    ' 週(' + meta.dateRange + ')';
+  const gradeNames = ['高一', '高二', '高三'];
+  let maxRows = 10;
+  grades.forEach(function(grade) {
+    maxRows = Math.max(maxRows, (awardLists[grade] || []).length);
+  });
+  const empty = grades.map(function(grade) {
+    return !(awardLists[grade] && awardLists[grade].length);
+  });
+
+  let html = '<html><head><meta charset="UTF-8"></head><body style="color:#000;">';
+  html += '<table style="width:100%;border-collapse:collapse;border:2.25pt solid #000;">';
+  html += '<tr><td colspan="6" style="' + honorCellStyle_('font-size:18pt;font-weight:bold;letter-spacing:0.18em;padding:8px;') + '">' +
+    escapeHonorHtml_(title) + '</td></tr>';
+  html += '<tr><td colspan="6" style="' + honorCellStyle_('font-size:16pt;font-weight:bold;padding:6px;') + '">' +
+    escapeHonorHtml_(subtitle) + '</td></tr><tr>';
+  gradeNames.forEach(function(name) {
+    html += '<td colspan="2" style="' + honorCellStyle_('font-size:14pt;font-weight:bold;padding:4px;') + '">' + name + '</td>';
+  });
+  html += '</tr><tr>';
+  gradeNames.forEach(function() {
+    html += '<td style="' + honorCellStyle_('font-size:13pt;font-weight:bold;width:12%;') + '">名次</td>';
+    html += '<td style="' + honorCellStyle_('font-size:13pt;font-weight:bold;width:21%;') + '">班級</td>';
+  });
+  html += '</tr>';
+
+  for (let i = 0; i < maxRows; i++) {
+    html += '<tr>';
+    grades.forEach(function(grade, gi) {
+      const rows = awardLists[grade] || [];
+      if (empty[gi]) {
+        if (i === 0) {
+          html += '<td colspan="2" rowspan="' + maxRows + '" style="' + honorCellStyle_('font-size:72pt;') + '">／</td>';
+        }
+        return;
+      }
+      if (i < rows.length) {
+        html += '<td style="' + honorCellStyle_('font-size:12pt;height:26px;') + '">' + honorLabelHtml_(rows[i].label) + '</td>';
+        html += '<td style="' + honorCellStyle_('font-size:12pt;') + '">' + escapeHonorHtml_(rows[i].name) + '</td>';
+      } else {
+        html += '<td style="' + honorCellStyle_('height:26px;') + '"></td>';
+        html += '<td style="' + honorCellStyle_('') + '"></td>';
+      }
+    });
+    html += '</tr>';
+  }
+
+  html += '<tr><td colspan="6" style="' + honorCellStyle_('font-size:13pt;font-weight:bold;padding:4px;') + '">附記</td></tr>';
+  const notes = config.notes.map(function(line) { return '　' + escapeHonorHtml_(line); }).join('<br>');
+  html += '<tr><td colspan="6" style="' + honorCellStyle_('text-align:left;font-size:11pt;padding:8px;') + '">' + notes + '</td></tr>';
+  html += '</table>';
+  html += '<table style="width:100%;margin-top:18px;border:none;"><tr>';
+  ['承辦人', '學務主任', '校長'].forEach(function(label) {
+    html += '<td style="font-family:標楷體,Iansui,serif;text-align:center;font-size:14pt;border:none;width:33%;">' +
+      label + '</td>';
+  });
+  html += '</tr></table></body></html>';
+  return html;
+}
+
+function applyHonorDocFont_(doc) {
+  const font = honorFormPdfFont_();
+  const body = doc.getBody();
+  try {
+    body.editAsText().setFontFamily(font);
+  } catch (err) {}
+  const tables = body.getTables();
+  for (let t = 0; t < tables.length; t++) {
+    const table = tables[t];
+    for (let r = 0; r < table.getNumRows(); r++) {
+      const row = table.getRow(r);
+      for (let c = 0; c < row.getNumCells(); c++) {
+        try {
+          row.getCell(c).editAsText().setFontFamily(font);
+        } catch (cellErr) {}
+      }
+    }
+  }
+}
+
+function exportHonorHtmlToPdfFile_(html, filename) {
+  const title = '_tmp_honor_html_' + new Date().getTime();
+  const boundary = '-------314159265358979323846';
+  const delim = '\r\n--' + boundary + '\r\n';
+  const close = '\r\n--' + boundary + '--';
+  const metadata = { name: title, mimeType: MimeType.GOOGLE_DOCS };
+  const payload = delim +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) + delim +
+    'Content-Type: text/html; charset=UTF-8\r\n\r\n' +
+    html + close;
+  const createResp = UrlFetchApp.fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+    {
+      method: 'post',
+      contentType: 'multipart/related; boundary="' + boundary + '"',
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      payload: payload,
+      muteHttpExceptions: true
+    }
+  );
+  if (createResp.getResponseCode() >= 300) {
+    throw new Error('HTML 轉文件失敗：' + createResp.getResponseCode() + ' ' + createResp.getContentText());
+  }
+  const created = JSON.parse(createResp.getContentText());
+  const docId = created.id;
+  if (!docId) {
+    throw new Error('HTML 轉文件未取得檔案 ID');
+  }
+  try {
+    const doc = DocumentApp.openById(docId);
+    const body = doc.getBody();
+    body.setMarginTop(40);
+    body.setMarginBottom(32);
+    body.setMarginLeft(40);
+    body.setMarginRight(40);
+    applyHonorDocFont_(doc);
+    doc.saveAndClose();
+    Utilities.sleep(1000);
+    const pdfResp = UrlFetchApp.fetch(
+      'https://docs.google.com/document/d/' + docId + '/export?format=pdf',
+      {
+        headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+        muteHttpExceptions: true
+      }
+    );
+    if (pdfResp.getResponseCode() !== 200) {
+      throw new Error('文件匯出 PDF 失敗：' + pdfResp.getResponseCode());
+    }
+    return DriveApp.createFile(pdfResp.getBlob().setName(filename));
+  } finally {
+    try {
+      DriveApp.getFileById(docId).setTrashed(true);
+    } catch (trashErr) {
+      Logger.log('暫存文件刪除失敗：' + trashErr.toString());
+    }
+  }
+}
+
 function trashDriveFilesByName_(name) {
   const files = DriveApp.getFilesByName(name);
   while (files.hasNext()) {
@@ -1449,7 +1635,7 @@ function setHonorRankLabel_(cell, label, fontFamily) {
 }
 
 function fillHonorFormSheet_(sheet, meta, awardLists, grades, config) {
-  const font = 'DFKai-SB';
+  const font = honorFormSheetFont_();
   const minDataRows = 10;
   let maxRows = minDataRows;
   grades.forEach(function(grade) {

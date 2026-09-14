@@ -387,6 +387,20 @@
       text-align: center;
       margin: 0 auto;
     }
+
+    #weeklyExportModal .export-modal {
+      max-width: 520px;
+    }
+
+    #weeklyExportModal a.weekly-pdf-download-link {
+      display: inline-block;
+      padding: 10px 18px;
+      background: #7e57c2;
+      color: #fff;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: bold;
+    }
     
     .export-modal h3 {
       margin-bottom: 15px;
@@ -799,7 +813,7 @@
         <p id="weeklyExportInfo">已產生每週排名檔案。</p>
         <div class="export-modal-buttons">
           <button type="button" class="search-btn" id="weeklyDownloadBtn">下載 CSV</button>
-          <button type="button" class="search-btn" id="weeklyDownloadPdfBtn" style="background-color: #7e57c2;">開啟 PDF</button>
+          <button type="button" class="search-btn" id="weeklyDownloadPdfBtn" style="background-color: #7e57c2;">下載 PDF</button>
           <button type="button" class="search-btn" style="background-color: #777;" id="weeklyExportCloseBtn">關閉</button>
         </div>
       </div>
@@ -1044,36 +1058,7 @@
       }
       if (weeklyExportPdfBtn) {
         weeklyExportPdfBtn.addEventListener('click', function() {
-          // 先檢查是否已有文件連結
-          const modal = document.getElementById('weeklyExportModal');
-          const info = document.getElementById('weeklyExportInfo');
-          let docUrl = lastWeeklyPdfUrl;
-          
-          // 嘗試從 Modal 中取得連結
-          if (!docUrl && modal) {
-            const urlFromData = modal.getAttribute('data-doc-url');
-            if (urlFromData) {
-              docUrl = urlFromData;
-              lastWeeklyPdfUrl = urlFromData;
-            }
-          }
-          
-          if (!docUrl && info && info.innerHTML) {
-            const linkMatch = info.innerHTML.match(/href="([^"]+)"/);
-            if (linkMatch && linkMatch[1]) {
-              docUrl = linkMatch[1];
-              lastWeeklyPdfUrl = linkMatch[1];
-            }
-          }
-          
-          // 如果有連結，直接開啟；否則先匯出再開啟
-          if (docUrl) {
-            console.log('找到現有文件連結，直接開啟：', docUrl);
-            window.open(docUrl, '_blank');
-          } else {
-            console.log('沒有找到文件連結，先匯出再開啟');
-            exportWeeklyStatisticsToPdf();
-          }
+          exportWeeklyStatisticsToPdf();
         });
       }
       
@@ -1947,6 +1932,59 @@
     // 匯出每週排名為 CSV，並顯示下載 Modal
     let lastWeeklyCsv = null;
     let lastWeeklyPdfUrl = null;
+    let lastWeeklyPdfDownloadUrl = null;
+
+    function weeklyPdfDownloadUrlFromResult(result) {
+      if (result && result.downloadUrl) return result.downloadUrl;
+      if (result && result.fileId) {
+        return 'https://drive.google.com/uc?export=download&id=' + result.fileId;
+      }
+      return (result && result.docUrl) || '';
+    }
+
+    function formatWeeklyRangeText(result) {
+      function ymd(value) {
+        const match = String(value || '').match(/(\d{4}-\d{2}-\d{2})/);
+        return match ? match[1] : '';
+      }
+      const start = ymd(result && result.weekStart);
+      const end = ymd(result && result.weekEnd);
+      if (start && end) return '（' + start + ' ~ ' + end + '）';
+      return '';
+    }
+
+    function showWeeklyPdfReady(result) {
+      const viewUrl = (result && result.docUrl) || '';
+      const downloadUrl = weeklyPdfDownloadUrlFromResult(result);
+      lastWeeklyPdfUrl = viewUrl || downloadUrl;
+      lastWeeklyPdfDownloadUrl = downloadUrl || viewUrl;
+
+      const modal = document.getElementById('weeklyExportModal');
+      const info = document.getElementById('weeklyExportInfo');
+      const csvBtn = document.getElementById('weeklyDownloadBtn');
+      const pdfBtn = document.getElementById('weeklyDownloadPdfBtn');
+
+      if (modal) {
+        modal.setAttribute('data-doc-url', lastWeeklyPdfUrl);
+        modal.setAttribute('data-download-url', lastWeeklyPdfDownloadUrl);
+        modal.style.display = 'flex';
+      }
+      if (csvBtn) csvBtn.style.display = 'none';
+      if (pdfBtn) {
+        pdfBtn.textContent = '下載 PDF';
+        pdfBtn.style.display = '';
+      }
+      if (info) {
+        const href = String(lastWeeklyPdfDownloadUrl || '').replace(/"/g, '&quot;');
+        info.innerHTML = '已產生每週排名 PDF' + formatWeeklyRangeText(result) +
+          '，請點下方按鈕或連結下載。<br><br>' +
+          '<a class="weekly-pdf-download-link" href="' + href +
+          '" target="_blank" rel="noopener noreferrer">點此下載 PDF</a>' +
+          '<p style="margin-top:12px;font-size:12px;color:#888;word-break:break-all;text-align:left;">' +
+          href + '</p>';
+      }
+      showMessage('已產生每週排名 PDF，請點視窗中的連結下載。', 'success');
+    }
 
     function getStoredLoginType() {
       try {
@@ -2096,23 +2134,13 @@
             }
             
             // 檢查 docUrl 是否存在
-            if (!result.docUrl) {
+            if (!result.docUrl && !result.downloadUrl && !result.fileId) {
               console.error('docUrl 不存在，result：', result);
               showMessage('無法取得 PDF 連結，請檢查 Apps Script 執行記錄。', 'error');
               return;
             }
             
-            lastWeeklyPdfUrl = result.docUrl;
-            console.log('已設定 lastWeeklyPdfUrl：', lastWeeklyPdfUrl);
-            
-            // 將連結儲存在 Modal 的 data 屬性中，作為備用（供其他功能使用）
-            const modal = document.getElementById('weeklyExportModal');
-            if (modal) {
-              modal.setAttribute('data-doc-url', result.docUrl);
-            }
-            
-            // 只顯示已產生訊息，不自動開啟 Google 文件
-            showMessage('已產生每週排名 PDF（' + (result.weekStart || '') + ' ~ ' + (result.weekEnd || '') + '）。', 'success');
+            showWeeklyPdfReady(result);
           })
           .withFailureHandler(function(error) {
             if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = false;
@@ -2161,89 +2189,23 @@
       }
     }
 
-    // 開啟剛產生的每週排名 Google 文件
     function openWeeklyPdf() {
-      console.log('openWeeklyPdf 被呼叫，lastWeeklyPdfUrl：', lastWeeklyPdfUrl);
-      
-      let docUrl = lastWeeklyPdfUrl;
       const modal = document.getElementById('weeklyExportModal');
-      const info = document.getElementById('weeklyExportInfo');
-      
-      // 如果變數為空，嘗試從 Modal 中取得連結
-      if (!docUrl) {
-        console.log('lastWeeklyPdfUrl 為空，嘗試從 Modal 中取得連結');
-        
-        // 方法1：從 Modal 的 data 屬性取得
-        if (modal) {
-          const urlFromData = modal.getAttribute('data-doc-url');
-          if (urlFromData) {
-            console.log('從 Modal data 屬性找到連結：', urlFromData);
-            docUrl = urlFromData;
-            lastWeeklyPdfUrl = urlFromData; // 更新變數
-          }
-        }
-        
-        // 方法2：從 Modal 的 HTML 內容中提取連結
-        if (!docUrl && info && info.innerHTML) {
-          const linkMatch = info.innerHTML.match(/href="([^"]+)"/);
-          if (linkMatch && linkMatch[1]) {
-            console.log('從 Modal HTML 中找到連結：', linkMatch[1]);
-            docUrl = linkMatch[1];
-            lastWeeklyPdfUrl = linkMatch[1]; // 更新變數
-          }
-        }
-      }
-      
-      if (!docUrl) {
-        // 若還是找不到連結，提示使用者
-        console.error('無法找到 Google 文件連結');
-        console.error('lastWeeklyPdfUrl：', lastWeeklyPdfUrl);
-        console.error('Modal data-doc-url：', modal ? modal.getAttribute('data-doc-url') : 'Modal 不存在');
-        console.error('Modal HTML：', info ? info.innerHTML : 'Info 不存在');
-        
-        // 檢查 Modal 是否顯示
-        const modalVisible = modal && modal.style.display !== 'none';
-        if (!modalVisible) {
-          showMessage('請先按「匯出每週排名 PDF」按鈕（紫色按鈕）產生檔案，等待匯出完成後，再按「開啟 PDF」按鈕。', 'error');
-        } else {
-          showMessage('找不到 PDF 連結。請重新按「匯出每週排名 PDF」按鈕產生檔案。', 'error');
-        }
+      const downloadUrl = lastWeeklyPdfDownloadUrl ||
+        (modal && modal.getAttribute('data-download-url')) ||
+        lastWeeklyPdfUrl ||
+        (modal && modal.getAttribute('data-doc-url'));
+      if (!downloadUrl) {
+        showMessage('找不到 PDF 連結。請重新按「匯出每週排名 PDF」。', 'error');
         return;
       }
-      
-      // 使用找到的連結開啟文件
-      console.log('準備開啟 Google 文件：', docUrl);
-      
-      try {
-        console.log('嘗試開啟 Google 文件：', docUrl);
-        
-        // 使用新視窗開啟 Google 文件連結
-        const docWindow = window.open(docUrl, '_blank');
-        
-        if (!docWindow || docWindow.closed || typeof docWindow.closed === 'undefined') {
-          // 如果彈出視窗被阻擋，提示使用者
-          console.warn('彈出視窗被阻擋，嘗試直接導向');
-          showMessage('瀏覽器阻擋了彈出視窗，正在直接開啟連結...', 'info');
-          // 也可以嘗試直接導向
-          setTimeout(function() {
-            window.location.href = docUrl;
-          }, 500);
-        } else {
-          console.log('成功開啟新視窗');
-        }
-      } catch (err) {
-        console.error('開啟 Google 文件時發生錯誤：', err);
-        showMessage('開啟 PDF 時發生錯誤：' + (err.message || err.toString()) + '。正在嘗試直接開啟連結...', 'error');
-        // 如果 window.open 失敗，嘗試直接導向
-        try {
-          setTimeout(function() {
-            window.location.href = docUrl;
-          }, 500);
-        } catch (e) {
-          console.error('無法開啟 Google 文件：', e);
-          showMessage('無法開啟 PDF，請手動複製連結：' + docUrl, 'error');
-        }
-      }
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
     
     // 開啟評分記錄查詢結果 Modal
