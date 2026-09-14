@@ -312,6 +312,13 @@
     });
   }
 
+  function scheduleBridgeRefresh() {
+    setTimeout(function () {
+      if (hasPendingCalls()) return;
+      recreateBridge();
+    }, 400);
+  }
+
   function tryIframePhotoUpload(base64, filename, timeoutMs) {
     ensureIframe();
     var ready = iframeReady ? Promise.resolve(true) : waitForBridge(8000, false);
@@ -327,10 +334,14 @@
 
   function uploadSinglePhotoFast(base64, filename) {
     var run = uploadChain.then(function () {
-      return tryIframePhotoUpload(base64, filename, 60000).catch(function () {
-        return tryIframePhotoUpload(base64, filename, 45000);
-      }).catch(function () {
+      return tryIframePhotoUpload(base64, filename, 35000).catch(function () {
         return uploadPhotoByChunks(base64, filename);
+      }).then(function (link) {
+        scheduleBridgeRefresh();
+        return link;
+      }, function (err) {
+        scheduleBridgeRefresh();
+        throw err;
       });
     });
     uploadChain = run.then(function () {}, function () {});
