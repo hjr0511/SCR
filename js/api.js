@@ -91,18 +91,48 @@
     } catch (err) {}
   }
 
+  function hasPendingCalls() {
+    var id;
+    for (id in pending) {
+      if (Object.prototype.hasOwnProperty.call(pending, id)) return true;
+    }
+    return false;
+  }
+
+  function recreateBridge() {
+    iframeReady = false;
+    iframeFailed = false;
+    iframeWarmed = false;
+    if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    iframe = null;
+    ensureIframe();
+  }
+
+  function reviveBridge() {
+    iframeFailed = false;
+    if (!isConfigured()) return;
+    if (iframeReady) return;
+    if (hasPendingCalls()) return;
+    recreateBridge();
+  }
+
   function waitForBridge(timeoutMs, markFailed) {
     if (iframeReady) return Promise.resolve(true);
-    if (iframeFailed || !isConfigured()) return Promise.resolve(false);
-    ensureIframe();
+    if (!isConfigured()) return Promise.resolve(false);
+    if (iframeFailed) {
+      iframeFailed = false;
+      if (!hasPendingCalls()) recreateBridge();
+    } else {
+      ensureIframe();
+    }
     return new Promise(function (resolve) {
       var settled = false;
       var timer = setTimeout(function () {
         if (settled) return;
         settled = true;
-        if (markFailed !== false) iframeFailed = true;
+        if (markFailed === true) iframeFailed = true;
         resolve(false);
-      }, timeoutMs || 2500);
+      }, timeoutMs || 8000);
       readyWaiters.push({
         resolve: function () {
           if (settled) return;
@@ -217,37 +247,56 @@
     var total = Math.ceil(data.length / chunkSize) || 1;
     var tasks = [];
     var n;
+    function sendChunk(index, attempt) {
+      var part = data.substr(index * chunkSize, chunkSize);
+      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, index, total, part]), 25000).catch(function (err) {
+        if (attempt >= 1) throw err;
+        return sendChunk(index, attempt + 1);
+      });
+    }
     for (n = 0; n < total; n++) {
       tasks.push((function (index) {
         return function () {
-          var part = data.substr(index * chunkSize, chunkSize);
-          return jsonpGet(buildPayload('uploadPhotoChunk', [filename, index, total, part]), 20000);
+          return sendChunk(index, 0);
         };
       })(n));
     }
-    return runPool(tasks, 10).then(function () {
-      return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000);
+    return runPool(tasks, 2).then(function () {
+      return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 30000);
     });
   }
 
-  function uploadSinglePhotoFast(base64, filename) {
+  function tryIframePhotoUpload(base64, filename, timeoutMs) {
     ensureIframe();
     if (iframeReady) {
-      return postCall('uploadSinglePhoto', [base64, filename], 25000).catch(function () {
+      return postCall('uploadSinglePhoto', [base64, filename], timeoutMs);
+    }
+    return waitForBridge(8000, false).then(function (ok) {
+      if (!ok || !iframe || !iframe.contentWindow) {
+        throw new Error('NO_IFRAME');
+      }
+      return postCall('uploadSinglePhoto', [base64, filename], timeoutMs);
+    });
+  }
+
+  var uploadChain = Promise.resolve();
+
+  function uploadSinglePhotoFast(base64, filename) {
+    var run = uploadChain.then(function () {
+      return tryIframePhotoUpload(base64, filename, 20000).catch(function () {
+        if (!hasPendingCalls()) recreateBridge();
+        return waitForBridge(8000, false).then(function (ok) {
+          if (!ok || !iframe || !iframe.contentWindow) {
+            throw new Error('NO_IFRAME');
+          }
+          return postCall('uploadSinglePhoto', [base64, filename], 20000);
+        });
+      }).catch(function () {
         return uploadPhotoByChunks(base64, filename);
       });
-    }
-    if (iframeFailed) {
-      return uploadPhotoByChunks(base64, filename);
-    }
-    return waitForBridge(10000, false).then(function (ok) {
-      if (!ok || !iframe || !iframe.contentWindow) {
-        return uploadPhotoByChunks(base64, filename);
-      }
-      return postCall('uploadSinglePhoto', [base64, filename], 25000);
-    }).catch(function () {
-      return uploadPhotoByChunks(base64, filename);
     });
+    uploadChain = run.then(function () {}, function () {});
+    return run;
   }
 
   function classroomCacheKey() {
@@ -370,6 +419,16 @@
   global.google.script = global.google.script || {};
   global.google.script.run = createRunner({});
   global.callSchoolApi = callApi;
+  global.reviveSchoolApiBridge = reviveBridge;
+
+  function onPageVisible() {
+    iframeFailed = false;
+    if (document.visibilityState && document.visibilityState !== 'visible') return;
+    if (hasPendingCalls()) return;
+    if (!iframeReady) reviveBridge();
+  }
+  global.addEventListener('pageshow', onPageVisible);
+  document.addEventListener('visibilitychange', onPageVisible);
 
   function boot() {
     if (!isConfigured()) showConfigError();

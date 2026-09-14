@@ -2111,10 +2111,18 @@
       });
     }
     
+    function isLikelyImageFile(file) {
+      if (!file) return false;
+      const type = String(file.type || '').toLowerCase();
+      if (!type || type.indexOf('image/') === 0) return true;
+      return /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(file.name || '');
+    }
+
     // 處理檔案選擇：壓縮後立刻上傳
     function handleFileSelect(files) {
+      if (window.reviveSchoolApiBridge) window.reviveSchoolApiBridge();
       Array.from(files).forEach(function(file) {
-        if (file.type.startsWith('image/')) {
+        if (isLikelyImageFile(file)) {
           compressImage(file, 240, 240, 0.22)
             .then(function(compressedBase64) {
               addPhotoAndUpload(compressedBase64);
@@ -2152,6 +2160,8 @@
     function startPhotoUpload(item) {
       const dataUrl = getPhotoDataUrl(item);
       if (!dataUrl) return Promise.resolve('');
+      if (item.uploading && item.promise) return item.promise;
+      if (window.reviveSchoolApiBridge) window.reviveSchoolApiBridge();
       const filename = 'order_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
       item.uploading = true;
       item.error = false;
@@ -2164,7 +2174,7 @@
           item.error = true;
           updatePhotoPreview();
           resolve('');
-        }, 40000);
+        }, 90000);
         google.script.run
           .withSuccessHandler(function(link) {
             if (settled) return;
