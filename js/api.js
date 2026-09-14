@@ -354,9 +354,9 @@
       return uploadSinglePhotoFast(args[0], args[1]);
     }
     if (action === 'getAllClassrooms' || action === 'getScoreRecords') {
-      return jsonpGetRetry(buildPayload(action, args), 90000, 2);
+      return jsonpGetRetry(buildPayload(action, args), 90000, 1);
     }
-    return jsonpGetRetry(buildPayload(action, args), 60000, 2);
+    return jsonpGetRetry(buildPayload(action, args), 60000, 1);
   }
 
   global.addEventListener('message', function (e) {
@@ -433,9 +433,6 @@
 
   function onPageVisible() {
     iframeFailed = false;
-    if (document.visibilityState && document.visibilityState !== 'visible') return;
-    if (hasPendingCalls()) return;
-    if (!iframeReady) reviveBridge();
   }
   global.addEventListener('pageshow', onPageVisible);
   global.addEventListener('pagehide', onPageHidden);

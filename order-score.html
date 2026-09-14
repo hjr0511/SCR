@@ -1092,13 +1092,6 @@
       AREA: 'orderArea',
       TIME_SLOT: 'orderTimeSlot'
     };
-
-    window.addEventListener('load', function () {
-      google.script.run
-        .withSuccessHandler(function () {})
-        .withFailureHandler(function () {})
-        .getAllClassrooms();
-    });
     
     // 儲存表單資料到 localStorage
     function saveFormData() {
