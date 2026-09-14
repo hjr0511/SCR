@@ -245,6 +245,7 @@
       overflow: hidden;
       background: #fff;
       flex-shrink: 0;
+      touch-action: manipulation;
     }
     .num-stepper input[type="number"] {
       width: 52px;
@@ -253,7 +254,9 @@
       border-radius: 0;
       text-align: center;
       padding: 10px 4px;
+      font-size: 16px;
       -moz-appearance: textfield;
+      touch-action: manipulation;
     }
     .num-stepper input[type="number"]::-webkit-outer-spin-button,
     .num-stepper input[type="number"]::-webkit-inner-spin-button {
@@ -266,16 +269,20 @@
       border-left: 1px solid #ddd;
     }
     .num-stepper-btn {
-      width: 40px;
-      min-height: 24px;
+      width: 44px;
+      min-height: 44px;
       flex: 1;
       border: none;
       background: #f5f5f5;
       color: #333;
-      font-size: 14px;
+      font-size: 16px;
       cursor: pointer;
       padding: 0;
       line-height: 1;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
     .num-stepper-btn:hover {
       background: #e67e22;
@@ -1652,21 +1659,27 @@
         if (el) el.addEventListener('input', updateTotalScore);
       });
 
+      function applyStepperDelta(btn) {
+        const targetId = btn.getAttribute('data-target');
+        const delta = parseInt(btn.getAttribute('data-delta'), 10) || 0;
+        const input = document.getElementById(targetId);
+        if (!input || input.readOnly || input.disabled) return;
+        const min = input.min !== '' ? parseFloat(input.min) : 0;
+        const max = input.max !== '' ? parseFloat(input.max) : null;
+        let val = parseInt(input.value, 10);
+        if (isNaN(val)) val = 0;
+        val += delta;
+        if (val < min) val = min;
+        if (max !== null && !isNaN(max) && val > max) val = max;
+        input.value = String(val);
+        input.blur();
+        updateTotalScore();
+      }
+
       document.querySelectorAll('.num-stepper-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          const targetId = btn.getAttribute('data-target');
-          const delta = parseInt(btn.getAttribute('data-delta'), 10) || 0;
-          const input = document.getElementById(targetId);
-          if (!input) return;
-          const min = input.min !== '' ? parseFloat(input.min) : 0;
-          const max = input.max !== '' ? parseFloat(input.max) : null;
-          let val = parseInt(input.value, 10);
-          if (isNaN(val)) val = 0;
-          val += delta;
-          if (val < min) val = min;
-          if (max !== null && !isNaN(max) && val > max) val = max;
-          input.value = String(val);
-          updateTotalScore();
+        btn.addEventListener('pointerdown', function(e) {
+          e.preventDefault();
+          applyStepperDelta(btn);
         });
       });
       
