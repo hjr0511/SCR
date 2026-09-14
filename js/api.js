@@ -322,7 +322,7 @@
   var iframeWarmed = false;
 
   function uploadPhotoByChunks(base64, filename) {
-    var chunkSize = 1500;
+    var chunkSize = 1000;
     var data = String(base64 || '');
     var comma = data.indexOf(',');
     if (comma >= 0) data = data.substring(comma + 1);
@@ -331,7 +331,7 @@
 
     function sendChunk(chunkIndex, attempt) {
       var part = data.substr(chunkIndex * chunkSize, chunkSize);
-      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, chunkIndex, total, part]), 12000).catch(function (err) {
+      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, chunkIndex, total, part]), 10000).catch(function (err) {
         if (attempt >= 1) throw err;
         return delay(250).then(function () {
           return sendChunk(chunkIndex, attempt + 1);
