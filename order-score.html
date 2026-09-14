@@ -771,7 +771,7 @@
 
       <div class="photo-section" id="evidencePhotoSection">
         <label>附上照片</label>
-        <p class="info-text">拍照當下就會開始上傳，作為佐證，不另外扣分。集會、巡堂、其他尤其建議拍照。</p>
+        <p class="info-text">先拍照或選檔，照片會留在這一頁當預覽；按「提交評分」才上傳到雲端，作為佐證，不另外扣分。集會、巡堂、其他尤其建議拍照。</p>
         <button type="button" class="camera-btn" id="cameraBtn">📷 開啟相機拍照</button>
         <button type="button" class="file-btn" id="fileBtn">📁 選擇照片檔案</button>
         <input type="file" id="fileInput" accept="image/*" multiple>
@@ -1915,18 +1915,18 @@
       });
     }
     
-    // 處理檔案選擇（添加圖片壓縮，拍完即上傳）
+    // 處理檔案選擇：先壓縮並顯示預覽，等提交再上傳
     function handleFileSelect(files) {
       Array.from(files).forEach(function(file) {
         if (file.type.startsWith('image/')) {
           compressImage(file, 240, 240, 0.22)
             .then(function(compressedBase64) {
-              addPhotoAndUpload(compressedBase64);
+              addPhotoPreview(compressedBase64);
             })
             .catch(function() {
               compressImage(file, 200, 200, 0.18)
                 .then(function(compressedBase64) {
-                  addPhotoAndUpload(compressedBase64);
+                  addPhotoPreview(compressedBase64);
                 })
                 .catch(function() {
                   showMessage('照片壓縮失敗，請改選較小的圖片再試', 'error');
@@ -1940,32 +1940,41 @@
       return typeof photo === 'string' ? photo : (photo && photo.dataUrl) || '';
     }
 
-    function addPhotoAndUpload(dataUrl) {
-      const item = {
+    function addPhotoPreview(dataUrl) {
+      photos.push({
         dataUrl: dataUrl,
         link: '',
-        uploading: true,
+        uploading: false,
         promise: null
-      };
+      });
+      updatePhotoPreview();
+    }
+
+    function uploadPhotoOnSubmit(photo) {
+      if (photo && photo.link) return Promise.resolve(photo.link);
+      if (photo && photo.promise) return photo.promise;
+      const dataUrl = getPhotoDataUrl(photo);
+      if (!dataUrl) return Promise.resolve('');
       const filename = 'order_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
-      item.promise = new Promise(function(resolve) {
+      photo.uploading = true;
+      updatePhotoPreview();
+      photo.promise = new Promise(function(resolve) {
         google.script.run
           .withSuccessHandler(function(link) {
-            item.link = link || '';
-            item.uploading = false;
+            photo.link = link || '';
+            photo.uploading = false;
             updatePhotoPreview();
-            resolve(item.link);
+            resolve(photo.link);
           })
           .withFailureHandler(function() {
-            item.uploading = false;
-            item.error = true;
+            photo.uploading = false;
+            photo.error = true;
             updatePhotoPreview();
             resolve('');
           })
           .uploadSinglePhoto(dataUrl, filename);
       });
-      photos.push(item);
-      updatePhotoPreview();
+      return photo.promise;
     }
     
     // 更新照片預覽
@@ -2152,16 +2161,7 @@
       if (photosToUpload.length > 0) {
         submitBtn.textContent = '上傳照片中...';
         const pending = photosToUpload.map(function(photo) {
-          if (photo && photo.link) return Promise.resolve(photo.link);
-          if (photo && photo.promise) return photo.promise;
-          const dataUrl = getPhotoDataUrl(photo);
-          return new Promise(function(resolve) {
-            const filename = 'order_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
-            google.script.run
-              .withSuccessHandler(function(link) { resolve(link || ''); })
-              .withFailureHandler(function() { resolve(''); })
-              .uploadSinglePhoto(dataUrl, filename);
-          });
+          return uploadPhotoOnSubmit(photo);
         });
         Promise.all(pending).then(function(links) {
           const ok = links.filter(Boolean);
