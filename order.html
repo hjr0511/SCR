@@ -1323,28 +1323,19 @@
         google.script.run
           .withSuccessHandler(function(records) {
             try {
-              console.log('收到查詢結果：', records);
-              console.log('記錄數量：', records ? records.length : 0);
-              
               if (loadingEl) loadingEl.style.display = 'none';
               if (searchBtnEl) searchBtnEl.disabled = false;
               
               if (!records || records.length === 0) {
-                console.log('沒有記錄，顯示無記錄訊息');
                 if (noRecordsEl) noRecordsEl.style.display = 'block';
                 showMessage('查無符合條件的評分記錄', 'info');
                 return;
               }
               
-              console.log('準備顯示 ' + records.length + ' 筆記錄');
-              console.log('記錄詳情：', JSON.stringify(records, null, 2));
-              
-              // 確保隱藏載入和無記錄訊息
               if (noRecordsEl) noRecordsEl.style.display = 'none';
               
               displayRecords(records);
               calculateSummary(records);
-              // 顯示 Modal（此時統計摘要數值已更新）
               openRecordsModal();
               
               showMessage('✓ 找到 ' + records.length + ' 筆符合條件的記錄，已顯示於視窗中', 'info');
@@ -1373,35 +1364,27 @@
     // 顯示評分記錄
     function displayRecords(records) {
       try {
-        console.log('displayRecords 被調用，記錄數量：', records ? records.length : 0);
         const tbody = document.getElementById('recordsTableBody');
         if (!tbody) {
-          console.error('找不到 recordsTableBody 元素');
           return;
         }
         
-        // 清空表格（確保清除所有舊記錄）
         tbody.innerHTML = '';
-        // 移除所有子節點（雙重保險）
         while (tbody.firstChild) {
           tbody.removeChild(tbody.firstChild);
         }
         
         if (!records || !Array.isArray(records)) {
-          console.error('records 不是有效的陣列，類型：', typeof records, '值：', records);
           return;
         }
         
-        console.log('開始處理 ' + records.length + ' 筆記錄');
         let processedCount = 0;
         
         records.forEach(function(record, index) {
           if (!record) {
-            console.warn('記錄 ' + index + ' 為空，跳過');
             return;
           }
           
-          console.log('處理記錄 ' + index + ':', record);
           processedCount++;
           
           const tr = document.createElement('tr');
@@ -1492,15 +1475,8 @@
           tbody.appendChild(tr);
         });
         
-        console.log('成功處理 ' + processedCount + ' 筆記錄，表格行數：', tbody.rows.length);
-        
-        // 確保表格有內容
         if (tbody.rows.length === 0 && processedCount > 0) {
-          console.error('警告：處理了 ' + processedCount + ' 筆記錄，但表格沒有行');
-          console.error('tbody.innerHTML 長度：', tbody.innerHTML.length);
-          showMessage('警告：記錄已處理但表格未顯示，請檢查瀏覽器控制台', 'error');
-        } else if (tbody.rows.length > 0) {
-        console.log('✓ 表格已成功顯示 ' + tbody.rows.length + ' 行');
+          showMessage('警告：記錄已處理但表格未顯示，請重新整理後再試', 'error');
         }
         
         // 確保無記錄訊息被隱藏
@@ -2086,7 +2062,6 @@
 
     // 匯出每週排名為 PDF（在後端產生匯出連結，再由瀏覽器開啟）
     function exportWeeklyStatisticsToPdf() {
-      console.log('exportWeeklyStatisticsToPdf 函式被呼叫');
       try {
         if (!isAdminSession()) {
           showMessage('此功能僅限管理員，請先按「管理員登入」。', 'error');
@@ -2096,30 +2071,20 @@
         const weekDate = weekSelect ? weekSelect.value : '';
         const weeklyExportPdfBtn = document.getElementById('weeklyExportPdfBtn');
         
-        console.log('週日期：', weekDate);
-        console.log('按鈕元素：', weeklyExportPdfBtn);
-        
         if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = true;
         showMessage('匯出每週排名 PDF 中...', 'info');
         
-        console.log('準備呼叫 google.script.run.exportWeeklyStatisticsPdf');
         google.script.run
           .withSuccessHandler(function(result) {
             if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = false;
             
-            // 除錯：記錄收到的結果
-            console.log('匯出結果：', result);
-            
             if (!result || !result.success) {
               const errorMsg = result && result.message ? result.message : '匯出每週排名 PDF 失敗';
-              console.error('匯出失敗：', errorMsg);
               showMessage(errorMsg, 'error');
               return;
             }
             
-            // 檢查 docUrl 是否存在
             if (!result.docUrl && !result.downloadUrl && !result.fileId) {
-              console.error('docUrl 不存在，result：', result);
               showMessage('無法取得 PDF 連結，請檢查 Apps Script 執行記錄。', 'error');
               return;
             }
