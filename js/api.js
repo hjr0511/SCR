@@ -281,6 +281,21 @@
     });
   }
 
+  function apiTimeoutFor(action) {
+    if (action === 'verifyScoreSystemPassword' || action === 'ping') return 20000;
+    if (action === 'getAllClassrooms' || action === 'getScoreRecords') return 90000;
+    if (action === 'uploadPhotoChunk') return 20000;
+    if (action === 'finalizePhotoUpload' || action === 'uploadSinglePhoto') return 40000;
+    return 60000;
+  }
+
+  function apiRequest(payload, timeoutMs) {
+    var waitMs = timeoutMs || apiTimeoutFor(payload && payload.action);
+    return postTextJson(payload, waitMs).catch(function () {
+      return jsonpGetRetry(payload, waitMs, 1);
+    });
+  }
+
   function runPool(tasks, limit) {
     var i = 0;
     var active = 0;
@@ -324,7 +339,7 @@
       var part = data.substr(chunkIndex * chunkSize, chunkSize);
       var waitMs = chunkIndex === 0 ? (attempt === 0 ? 28000 : 20000) : 15000;
       var maxAttempt = chunkIndex === 0 ? 2 : 1;
-      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, chunkIndex, total, part]), waitMs).catch(function (err) {
+      return apiRequest(buildPayload('uploadPhotoChunk', [filename, chunkIndex, total, part]), waitMs).catch(function (err) {
         if (attempt >= maxAttempt) throw err;
         return delay(400).then(function () {
           return sendChunk(chunkIndex, attempt + 1);
@@ -335,10 +350,10 @@
     function sendNext() {
       if (index >= total) {
         return delay(300).then(function () {
-          return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 30000);
+          return apiRequest(buildPayload('finalizePhotoUpload', [filename]), 30000);
         }).catch(function () {
           return delay(500).then(function () {
-            return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 30000);
+            return apiRequest(buildPayload('finalizePhotoUpload', [filename]), 30000);
           });
         });
       }
@@ -422,13 +437,8 @@
     if (action === 'uploadSinglePhoto') {
       return uploadSinglePhotoFast(args[0], args[1]);
     }
-    if (action === 'verifyScoreSystemPassword' || action === 'ping') {
-      return jsonpGetRetry(buildPayload(action, args), 20000, 1);
-    }
-    if (action === 'getAllClassrooms' || action === 'getScoreRecords') {
-      return jsonpGetRetry(buildPayload(action, args), 90000, 1);
-    }
-    return jsonpGetRetry(buildPayload(action, args), 60000, 1);
+    var payload = buildPayload(action, args);
+    return apiRequest(payload, apiTimeoutFor(action));
   }
 
   global.addEventListener('message', function (e) {
@@ -503,7 +513,7 @@
   function warmBackend() {
     if (!isConfigured()) return Promise.resolve(false);
     if (warmPromise) return warmPromise;
-    warmPromise = jsonpGet(buildPayload('ping', []), 20000).then(function () {
+    warmPromise = apiRequest(buildPayload('ping', []), 20000).then(function () {
       return true;
     }).catch(function () {
       return false;
