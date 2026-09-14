@@ -285,9 +285,15 @@
     return 60000;
   }
 
+  var jsonpChain = Promise.resolve();
+
   function apiRequest(payload, timeoutMs) {
     var waitMs = timeoutMs || apiTimeoutFor(payload && payload.action);
-    return jsonpGetRetry(payload, waitMs, 1);
+    var run = jsonpChain.then(function () {
+      return jsonpGetRetry(payload, waitMs, 1);
+    });
+    jsonpChain = run.then(function () {}, function () {});
+    return run;
   }
 
   function runPool(tasks, limit) {

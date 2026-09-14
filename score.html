@@ -1056,6 +1056,53 @@
       AREA: 'scoreArea',
       TIME_SLOT: 'scoreTimeSlot'
     };
+
+    const FORM_OPTIONS = {
+      grades: ['一年級', '二年級', '三年級'],
+      areas: ['教室區', '外掃區', '廁所區'],
+      timeSlots: ['午休', '下午打掃時間'],
+      evaluatorTypes: ['衛生股長', '衛生服務隊', '評分教師', '巡堂老師', '衛生組']
+    };
+
+    function fillSelectOptions(select, items, placeholder) {
+      if (!select) return;
+      select.innerHTML = '';
+      const first = document.createElement('option');
+      first.value = '';
+      first.textContent = placeholder;
+      select.appendChild(first);
+      (items || []).forEach(function(item) {
+        const option = document.createElement('option');
+        option.value = item;
+        option.textContent = item;
+        select.appendChild(option);
+      });
+    }
+
+    function applyEvaluatorTypes(types) {
+      const modalSelect = document.getElementById('modalEvaluatorType');
+      if (!modalSelect) return;
+      const filtered = (types || []).filter(function(type) {
+        if (isStudentLogin) return type.includes('衛生股長') || type.includes('衛生服務隊');
+        if (isTeacherLogin) return type.includes('評分教師') || type.includes('巡堂老師');
+        if (isAdminLogin) return type.includes('衛生組');
+        return true;
+      });
+      fillSelectOptions(modalSelect, filtered, '請選擇類型');
+      const hiddenInput = document.getElementById('evaluatorType');
+      const savedType = localStorage.getItem(STORAGE_KEYS.EVALUATOR_TYPE);
+      if (savedType && filtered.indexOf(savedType) !== -1) {
+        hiddenInput.value = savedType;
+        modalSelect.value = savedType;
+        updateGradeFieldVisibility(savedType);
+      }
+      if (!modalSelect.dataset.gradeVisBound) {
+        modalSelect.dataset.gradeVisBound = '1';
+        modalSelect.addEventListener('change', function() {
+          updateGradeFieldVisibility(this.value);
+        });
+      }
+    }
     
     // 儲存表單資料到 localStorage
     function saveFormData() {
@@ -1066,40 +1113,25 @@
       localStorage.setItem(STORAGE_KEYS.TIME_SLOT, document.getElementById('timeSlot').value);
     }
     
-    // 從 localStorage 讀取表單資料
+    // 從 localStorage 讀取表單資料（下拉選項已在 loadInitialData 填好，這裡不再打後端）
     function loadFormData() {
-      const savedGrade = localStorage.getItem(STORAGE_KEYS.EVALUATOR_GRADE);
       const savedType = localStorage.getItem(STORAGE_KEYS.EVALUATOR_TYPE);
       const savedEvaluator = localStorage.getItem(STORAGE_KEYS.EVALUATOR);
       const savedArea = localStorage.getItem(STORAGE_KEYS.AREA);
       const savedTimeSlot = localStorage.getItem(STORAGE_KEYS.TIME_SLOT);
-      
-      // 等待選項載入完成後再填入
-      setTimeout(function() {
-        if (savedType) {
-          document.getElementById('evaluatorType').value = savedType;
-        }
-        // 老師／衛生組不還原年級，改載入全部教室；學生才還原年級並過濾教室
-        if (isEvaluatorGradeRequired(savedType) && savedGrade) {
-          document.getElementById('evaluatorGrade').value = savedGrade;
-          loadClassrooms(savedGrade);
-        } else if (!isEvaluatorGradeRequired(savedType)) {
-          document.getElementById('evaluatorGrade').value = '';
-          const modalGrade = document.getElementById('modalEvaluatorGrade');
-          if (modalGrade) modalGrade.value = '';
-          loadAllClassrooms();
-        }
-        if (savedEvaluator) {
-          document.getElementById('evaluator').value = savedEvaluator;
-        }
-        if (savedArea) {
-          document.getElementById('area').value = savedArea;
-        }
-        if (savedTimeSlot) {
-          document.getElementById('timeSlot').value = savedTimeSlot;
-        }
-        updateGradeFieldVisibility(savedType || document.getElementById('evaluatorType').value);
-      }, 500); // 延遲 500ms 確保選項已載入
+      if (savedEvaluator) {
+        document.getElementById('evaluator').value = savedEvaluator;
+        document.getElementById('modalEvaluator').value = savedEvaluator;
+      }
+      if (savedArea) {
+        document.getElementById('area').value = savedArea;
+        document.getElementById('modalArea').value = savedArea;
+      }
+      if (savedTimeSlot) {
+        document.getElementById('timeSlot').value = savedTimeSlot;
+        document.getElementById('modalTimeSlot').value = savedTimeSlot;
+      }
+      updateGradeFieldVisibility(savedType || document.getElementById('evaluatorType').value);
     }
     
     // 根據評分人員類型更新評分人員年級欄位的顯示
@@ -1423,245 +1455,38 @@
       // 如果既不是學生、老師也不是管理員登入，不進行過濾（顯示所有選項）
     }
     
-    // 載入初始資料
+    // 載入初始資料：區域／時段／類型用本機常數立刻填好，只向後端要教室
     function loadInitialData() {
-      var classroomsPrefetched = false;
-      if (isTeacherLogin || isAdminLogin) {
-        classroomsPrefetched = true;
+      fillSelectOptions(document.getElementById('modalEvaluatorGrade'), FORM_OPTIONS.grades, '請選擇評分人員年級');
+      fillSelectOptions(document.getElementById('area'), FORM_OPTIONS.areas, '請選擇區域');
+      fillSelectOptions(document.getElementById('modalArea'), FORM_OPTIONS.areas, '請選擇區域');
+      fillSelectOptions(document.getElementById('modalTimeSlot'), FORM_OPTIONS.timeSlots, '請選擇時段');
+      applyEvaluatorTypes(FORM_OPTIONS.evaluatorTypes);
+
+      const savedGrade = localStorage.getItem(STORAGE_KEYS.EVALUATOR_GRADE);
+      const savedTypeForGrade = localStorage.getItem(STORAGE_KEYS.EVALUATOR_TYPE);
+      const hiddenGrade = document.getElementById('evaluatorGrade');
+      const modalGrade = document.getElementById('modalEvaluatorGrade');
+      if (isEvaluatorGradeRequired(savedTypeForGrade) && savedGrade) {
+        hiddenGrade.value = savedGrade;
+        modalGrade.value = savedGrade;
+        loadClassrooms(savedGrade);
+      } else if (!isEvaluatorGradeRequired(savedTypeForGrade)) {
+        hiddenGrade.value = '';
+        modalGrade.value = '';
         loadAllClassrooms();
       }
-      // 載入年級（modal 和隱藏欄位）
-      google.script.run
-        .withSuccessHandler(function(grades) {
-          // Modal
-          const modalSelect = document.getElementById('modalEvaluatorGrade');
-          grades.forEach(function(grade) {
-            const option = document.createElement('option');
-            option.value = grade;
-            option.textContent = grade;
-            modalSelect.appendChild(option);
-          });
-          
-          // 隱藏欄位（主表單中的隱藏 input）
-          const hiddenInput = document.getElementById('evaluatorGrade');
-          
-          // 選項載入完成後，嘗試填入已儲存的值（老師／衛生組不套用年級）
-          const savedGrade = localStorage.getItem(STORAGE_KEYS.EVALUATOR_GRADE);
-          const savedTypeForGrade = localStorage.getItem(STORAGE_KEYS.EVALUATOR_TYPE);
-          if (isEvaluatorGradeRequired(savedTypeForGrade) && savedGrade) {
-            hiddenInput.value = savedGrade;
-            modalSelect.value = savedGrade;
-            loadClassrooms(savedGrade);
-          } else if (!isEvaluatorGradeRequired(savedTypeForGrade)) {
-            hiddenInput.value = '';
-            modalSelect.value = '';
-            if (!classroomsPrefetched) loadAllClassrooms();
-          }
-        })
-        .getGrades();
-      
-      // 載入評分區域（主表單和 modal）
-      google.script.run
-        .withSuccessHandler(function(areas) {
-          // 主表單
-          const select = document.getElementById('area');
-          areas.forEach(function(area) {
-            const option = document.createElement('option');
-            option.value = area;
-            option.textContent = area;
-            select.appendChild(option);
-          });
-          
-          // Modal
-          const modalSelect = document.getElementById('modalArea');
-          areas.forEach(function(area) {
-            const option = document.createElement('option');
-            option.value = area;
-            option.textContent = area;
-            modalSelect.appendChild(option);
-          });
-          
-          // 選項載入完成後，嘗試填入已儲存的值
-          const savedArea = localStorage.getItem(STORAGE_KEYS.AREA);
-          if (savedArea) {
-            select.value = savedArea;
-            modalSelect.value = savedArea;
-          }
-        })
-        .getAreas();
-      
-      // 載入評分時段（modal 和隱藏欄位）
-      google.script.run
-        .withSuccessHandler(function(timeSlots) {
-          // Modal
-          const modalSelect = document.getElementById('modalTimeSlot');
-          timeSlots.forEach(function(slot) {
-            const option = document.createElement('option');
-            option.value = slot;
-            option.textContent = slot;
-            modalSelect.appendChild(option);
-          });
-          
-          // 隱藏欄位（主表單中的隱藏 input）
-          const hiddenInput = document.getElementById('timeSlot');
-          
-          // 選項載入完成後，嘗試填入已儲存的值
-          const savedTimeSlot = localStorage.getItem(STORAGE_KEYS.TIME_SLOT);
-          if (savedTimeSlot) {
-            hiddenInput.value = savedTimeSlot;
-            modalSelect.value = savedTimeSlot;
-          }
-        })
-        .getTimeSlots();
-      
-      // 載入評分人員類型（modal 和隱藏欄位）
-      google.script.run
-        .withSuccessHandler(function(types) {
-          // Modal
-          const modalSelect = document.getElementById('modalEvaluatorType');
-          
-          // 再次檢查登入類型，確保標記正確
-          let shouldFilterForStudent = false;
-          let shouldFilterForTeacher = false;
-          let shouldFilterForAdmin = false;
-          let currentLoginType = '';
-          try {
-            // 優先使用伺服器端傳來的 loginType
-            if (serverLoginType === 'student') {
-              isStudentLogin = true;
-              isTeacherLogin = false;
-              isAdminLogin = false;
-              shouldFilterForStudent = true;
-              currentLoginType = 'student';
-            } else if (serverLoginType === 'teacher') {
-              isStudentLogin = false;
-              isTeacherLogin = true;
-              isAdminLogin = false;
-              shouldFilterForTeacher = true;
-              currentLoginType = 'teacher';
-            } else if (serverLoginType === 'admin') {
-              isStudentLogin = false;
-              isTeacherLogin = false;
-              isAdminLogin = true;
-              shouldFilterForAdmin = true;
-              currentLoginType = 'admin';
-            } else {
-              // 如果伺服器端沒有，則從 URL 參數讀取
-              const urlParams = new URLSearchParams(window.location.search);
-              const loginType = urlParams.get('loginType');
-              if (loginType === 'student') {
-                isStudentLogin = true;
-                isTeacherLogin = false;
-                isAdminLogin = false;
-                shouldFilterForStudent = true;
-                currentLoginType = 'student';
-              } else if (loginType === 'teacher') {
-                isStudentLogin = false;
-                isTeacherLogin = true;
-                isAdminLogin = false;
-                shouldFilterForTeacher = true;
-                currentLoginType = 'teacher';
-              } else if (loginType === 'admin') {
-                isStudentLogin = false;
-                isTeacherLogin = false;
-                isAdminLogin = true;
-                shouldFilterForAdmin = true;
-                currentLoginType = 'admin';
-              } else {
-                isStudentLogin = false;
-                isTeacherLogin = false;
-                isAdminLogin = false;
-              }
-            }
-          } catch (error) {
-            console.error('檢查登入類型時發生錯誤：', error);
-          }
-          
-          // 先清空所有選項（保留第一個預設選項）
-          modalSelect.innerHTML = '<option value="">請選擇類型</option>';
-          
-          // 根據登入類型過濾選項
-          if (shouldFilterForStudent || isStudentLogin) {
-            // 學生登入：只顯示「衛生股長」和「衛生服務隊」
-            types.forEach(function(type) {
-              if (type.includes('衛生股長') || type.includes('衛生服務隊')) {
-                const option = document.createElement('option');
-                option.value = type;
-                option.textContent = type;
-                modalSelect.appendChild(option);
-              }
-            });
-          } else if (shouldFilterForTeacher || isTeacherLogin) {
-            // 老師登入：只顯示「評分教師」和「巡堂老師」
-            types.forEach(function(type) {
-              if (type.includes('評分教師') || type.includes('巡堂老師')) {
-                const option = document.createElement('option');
-                option.value = type;
-                option.textContent = type;
-                modalSelect.appendChild(option);
-              }
-            });
-          } else if (shouldFilterForAdmin || isAdminLogin) {
-            // 管理員登入：只顯示「衛生組」
-            types.forEach(function(type) {
-              if (type.includes('衛生組')) {
-                const option = document.createElement('option');
-                option.value = type;
-                option.textContent = type;
-                modalSelect.appendChild(option);
-              }
-            });
-          } else {
-            // 沒有指定登入類型，顯示所有選項（向後兼容）
-            types.forEach(function(type) {
-              const option = document.createElement('option');
-              option.value = type;
-              option.textContent = type;
-              modalSelect.appendChild(option);
-            });
-          }
-          
-          // 隱藏欄位（主表單中的隱藏 input）
-          const hiddenInput = document.getElementById('evaluatorType');
-          
-          // 選項載入完成後，嘗試填入已儲存的值
-          const savedType = localStorage.getItem(STORAGE_KEYS.EVALUATOR_TYPE);
-          if (savedType) {
-            // 根據登入類型檢查已儲存的類型是否匹配
-            if (isStudentLogin) {
-              if (savedType.includes('衛生股長') || savedType.includes('衛生服務隊')) {
-                hiddenInput.value = savedType;
-                modalSelect.value = savedType;
-                updateGradeFieldVisibility(savedType);
-              }
-            } else if (isTeacherLogin) {
-              if (savedType.includes('評分教師') || savedType.includes('巡堂老師')) {
-                hiddenInput.value = savedType;
-                modalSelect.value = savedType;
-                updateGradeFieldVisibility(savedType);
-              }
-            } else if (isAdminLogin) {
-              if (savedType.includes('衛生組')) {
-                hiddenInput.value = savedType;
-                modalSelect.value = savedType;
-                updateGradeFieldVisibility(savedType);
-              }
-            } else {
-              hiddenInput.value = savedType;
-              modalSelect.value = savedType;
-              // 根據已儲存的類型更新評分人員年級欄位的顯示
-              updateGradeFieldVisibility(savedType);
-            }
-          }
-          
-          // 添加事件監聽器：當評分人員類型改變時，更新評分人員年級欄位的顯示
-          modalSelect.addEventListener('change', function() {
-            updateGradeFieldVisibility(this.value);
-          });
-        })
-        .getEvaluatorTypes();
-      
-      // 載入評分人員姓名（主表單和 modal）
+
+      const savedArea = localStorage.getItem(STORAGE_KEYS.AREA);
+      if (savedArea) {
+        document.getElementById('area').value = savedArea;
+        document.getElementById('modalArea').value = savedArea;
+      }
+      const savedTimeSlot = localStorage.getItem(STORAGE_KEYS.TIME_SLOT);
+      if (savedTimeSlot) {
+        document.getElementById('timeSlot').value = savedTimeSlot;
+        document.getElementById('modalTimeSlot').value = savedTimeSlot;
+      }
       const savedEvaluator = localStorage.getItem(STORAGE_KEYS.EVALUATOR);
       if (savedEvaluator) {
         document.getElementById('evaluator').value = savedEvaluator;
