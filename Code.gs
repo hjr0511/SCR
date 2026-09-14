@@ -31,6 +31,43 @@ const EVALUATOR_TYPES = ['衛生股長', '衛生服務隊', '評分教師', '巡
 
 // 添加一個全局緩存來存儲資料夾引用（參考 uploadFileToDrive 的成功策略）
 const folderCache = {};
+const CLEAN_PHOTO_FOLDER_NAME = '學校整潔評分照片';
+const CLEAN_PHOTO_FOLDER_PROP = 'CLEAN_PHOTO_FOLDER_ID';
+
+function getCleanPhotoFolder_() {
+  if (folderCache[CLEAN_PHOTO_FOLDER_NAME]) {
+    return folderCache[CLEAN_PHOTO_FOLDER_NAME];
+  }
+
+  const props = PropertiesService.getScriptProperties();
+  const savedId = props.getProperty(CLEAN_PHOTO_FOLDER_PROP);
+  if (savedId) {
+    try {
+      const saved = DriveApp.getFolderById(savedId);
+      folderCache[CLEAN_PHOTO_FOLDER_NAME] = saved;
+      return saved;
+    } catch (e) {
+      props.deleteProperty(CLEAN_PHOTO_FOLDER_PROP);
+    }
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const file = DriveApp.getFileById(ss.getId());
+  const parents = file.getParents();
+  const parentFolder = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+  const folders = parentFolder.getFoldersByName(CLEAN_PHOTO_FOLDER_NAME);
+  let folder;
+  if (folders.hasNext()) {
+    folder = folders.next();
+  } else {
+    folder = parentFolder.createFolder(CLEAN_PHOTO_FOLDER_NAME);
+  }
+  folderCache[CLEAN_PHOTO_FOLDER_NAME] = folder;
+  try {
+    props.setProperty(CLEAN_PHOTO_FOLDER_PROP, folder.getId());
+  } catch (e) {}
+  return folder;
+}
 
 /**
  * 初始化工作表（首次執行時創建必要的工作表）
@@ -260,69 +297,19 @@ function getClassrooms(grade) {
  */
 function uploadPhotoToDrive(base64Data, filename) {
   try {
-    // 優化：簡化驗證，僅檢查關鍵條件以提升速度
     if (!base64Data || !filename) {
       throw new Error('參數無效');
     }
-    
-    const folderName = '學校整潔評分照片';
-    let folder = null;
-    
-    // 先檢查緩存（優化：優先使用緩存，避免重複查找和 API 調用）
-    if (folderCache[folderName]) {
-      folder = folderCache[folderName];
-    } else {
-      // 取得當前試算表的檔案 ID（僅在需要時調用）
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      const file = DriveApp.getFileById(ss.getId());
-      
-      // 取得試算表的父資料夾
-      const parents = file.getParents();
-      const parentFolder = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
-      
-      // 優化：使用 getFoldersByName 直接查找，比循環查找更快
-      const folders = parentFolder.getFoldersByName(folderName);
-      if (folders.hasNext()) {
-        folder = folders.next();
-        folderCache[folderName] = folder;
-      } else {
-        // 如果找不到，創建新資料夾
-        try {
-          folder = parentFolder.createFolder(folderName);
-          folderCache[folderName] = folder;
-        } catch (createError) {
-          // 如果創建資料夾失敗，使用父資料夾作為備選方案
-          folder = parentFolder;
-        }
-      }
-    }
-    
-    if (!folder) {
-      throw new Error('無法找到或創建照片資料夾');
-    }
-    
-    // 處理 base64 資料並解碼（優化：使用更高效的方法）
+
+    const folder = getCleanPhotoFolder_();
     const commaIndex = base64Data.indexOf(',');
     const base64Content = commaIndex >= 0 ? base64Data.substring(commaIndex + 1) : base64Data;
     const blob = Utilities.newBlob(Utilities.base64Decode(base64Content), 'image/jpeg', filename);
-    
-    // 上傳檔案到 Drive（優化：直接上傳並獲取 URL，完全移除權限設置以最大化速度）
-    const uploadedFile = folder.createFile(blob);
-    
-    // 優化：完全移除權限設置以提升速度（權限可以在後台或需要時再設置）
-    // 如果需要公開訪問，可以在上傳後通過其他方式設置，不阻塞上傳流程
-    
-    // 立即回傳檔案連結
-    return uploadedFile.getUrl();
+    return folder.createFile(blob).getUrl();
   } catch (error) {
     const errorMsg = '上傳照片失敗：' + error.toString();
     Logger.log(errorMsg);
-    Logger.log('錯誤堆疊：' + (error.stack || '無堆疊資訊'));
-    Logger.log('錯誤類型：' + (error.name || '未知'));
-    Logger.log('錯誤訊息：' + (error.message || '無訊息'));
-    Logger.log('執行用戶：' + Session.getActiveUser().getEmail());
     
-    // 提供更詳細的錯誤訊息，幫助診斷學校 Google Workspace 的問題
     let detailedError = errorMsg;
     const errorStr = error.toString().toLowerCase();
     if (errorStr.includes('permission') || errorStr.includes('權限') || errorStr.includes('access')) {
@@ -332,8 +319,6 @@ function uploadPhotoToDrive(base64Data, filename) {
     } else if (errorStr.includes('rate') || errorStr.includes('限制')) {
       detailedError += ' 可能的原因：上傳頻率過高，請稍後再試。';
     }
-    
-    // 拋出錯誤以便上層可以捕獲詳細資訊
     throw new Error(detailedError);
   }
 }
@@ -355,29 +340,7 @@ function clearFolderCache() {
  */
 function getPhotoFolderLink() {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const ssFile = DriveApp.getFileById(ss.getId());
-    const folderName = '學校整潔評分照片';
-    
-    // 取得試算表所在的資料夾
-    let parentFolder;
-    const parentFolders = ssFile.getParents();
-    if (parentFolders.hasNext()) {
-      parentFolder = parentFolders.next();
-      const folders = parentFolder.getFoldersByName(folderName);
-      if (folders.hasNext()) {
-        return folders.next().getUrl();
-      }
-    } else {
-      // 試算表在根目錄
-      const folders = DriveApp.getFoldersByName(folderName);
-      if (folders.hasNext()) {
-        return folders.next().getUrl();
-      }
-    }
-    
-    // 如果資料夾不存在，返回空字串
-    return '';
+    return getCleanPhotoFolder_().getUrl();
   } catch (error) {
     Logger.log('取得照片資料夾連結失敗：' + error.toString());
     return '';

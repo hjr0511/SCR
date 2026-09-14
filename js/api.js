@@ -271,6 +271,11 @@
     } catch (err) {}
   }
 
+  function shouldPreloadBridge() {
+    var path = String((global.location && location.pathname) || '').toLowerCase();
+    return path.indexOf('score.html') >= 0;
+  }
+
   function callApi(action, args) {
     if (!isConfigured()) {
       showConfigError();
@@ -280,7 +285,7 @@
     if (action === 'uploadSinglePhoto') {
       return uploadSinglePhotoFast(args[0], args[1]);
     }
-    if (action === 'getAllClassrooms') {
+    if (action === 'getAllClassrooms' || action === 'getScoreRecords') {
       return jsonpGet(buildPayload(action, args), 90000).catch(function () {
         return jsonpGet(buildPayload(action, args), 90000);
       });
@@ -353,7 +358,7 @@
 
   function boot() {
     if (!isConfigured()) showConfigError();
-    else ensureIframe();
+    else if (shouldPreloadBridge()) ensureIframe();
   }
   if (document.body) boot();
   else document.addEventListener('DOMContentLoaded', boot);

@@ -357,6 +357,20 @@
       text-align: center;
       padding: 4px 0;
     }
+
+    .photo-item.error::after {
+      content: '失敗·點擊重試';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(192, 57, 43, 0.9);
+      color: #fff;
+      font-size: 12px;
+      text-align: center;
+      padding: 4px 0;
+      cursor: pointer;
+    }
     
     .message {
       padding: 15px;
@@ -997,7 +1011,17 @@
       loadFormData();
       // 再次檢查並設定學生身份（在資料載入後）
       checkLoginType();
+      warmupPhotoUpload();
     };
+
+    function warmupPhotoUpload() {
+      try {
+        google.script.run
+          .withSuccessHandler(function() {})
+          .withFailureHandler(function() {})
+          .ping();
+      } catch (err) {}
+    }
     
     // 先檢查登入類型（只設定標記，不進行其他操作）
     function checkLoginTypeFirst() {
@@ -1837,39 +1861,65 @@
         .getClassrooms(grade);
     }
     
-    // 壓縮圖片（優化上傳速度）
+    // 壓縮圖片（縮小後拍完立刻上傳，速度與秩序相同）
     function compressImage(file, maxWidth, maxHeight, quality) {
+      function drawToJpeg(source, srcW, srcH) {
+        let width = srcW;
+        let height = srcH;
+        if (width > height) {
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+        } else if (height > maxHeight) {
+          width = (width * maxHeight) / height;
+          height = maxHeight;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(width));
+        canvas.height = Math.max(1, Math.round(height));
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        if (source.close) source.close();
+        return canvas.toDataURL('image/jpeg', quality);
+      }
+
+      if (typeof createImageBitmap === 'function') {
+        return createImageBitmap(file).then(function(bitmap) {
+          return drawToJpeg(bitmap, bitmap.width, bitmap.height);
+        }).catch(function() {
+          return compressImageWithFileReader(file, maxWidth, maxHeight, quality);
+        });
+      }
+      return compressImageWithFileReader(file, maxWidth, maxHeight, quality);
+    }
+
+    function compressImageWithFileReader(file, maxWidth, maxHeight, quality) {
       return new Promise(function(resolve, reject) {
         const reader = new FileReader();
         reader.onload = function(e) {
           const img = new Image();
           img.onload = function() {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            // 計算縮放比例，保持寬高比
-            if (width > height) {
-              if (width > maxWidth) {
-                height = (height * maxWidth) / width;
-                width = maxWidth;
-              }
-            } else {
-              if (height > maxHeight) {
+            try {
+              let width = img.width;
+              let height = img.height;
+              if (width > height) {
+                if (width > maxWidth) {
+                  height = (height * maxWidth) / width;
+                  width = maxWidth;
+                }
+              } else if (height > maxHeight) {
                 width = (width * maxHeight) / height;
                 height = maxHeight;
               }
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round(width));
+              canvas.height = Math.max(1, Math.round(height));
+              canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+              resolve(canvas.toDataURL('image/jpeg', quality));
+            } catch (err) {
+              reject(err);
             }
-            
-            canvas.width = width;
-            canvas.height = height;
-            
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // 轉換為 base64，使用指定的壓縮品質
-            const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-            resolve(compressedBase64);
           };
           img.onerror = function() {
             reject(new Error('圖片載入失敗'));
@@ -1883,22 +1933,22 @@
       });
     }
     
-    // 處理檔案選擇（添加圖片壓縮）
+    // 處理檔案選擇：壓縮後立刻上傳
     function handleFileSelect(files) {
       Array.from(files).forEach(function(file) {
         if (file.type.startsWith('image/')) {
-          // 壓縮成約 400px、品質 32%，評分紀錄已夠看，上傳也較快
-          compressImage(file, 320, 320, 0.25)
+          compressImage(file, 240, 240, 0.22)
             .then(function(compressedBase64) {
               addPhotoAndUpload(compressedBase64);
             })
-            .catch(function(error) {
-              // 如果壓縮失敗，使用原始圖片
-              const reader = new FileReader();
-              reader.onload = function(e) {
-                addPhotoAndUpload(e.target.result);
-              };
-              reader.readAsDataURL(file);
+            .catch(function() {
+              compressImage(file, 200, 200, 0.18)
+                .then(function(compressedBase64) {
+                  addPhotoAndUpload(compressedBase64);
+                })
+                .catch(function() {
+                  showMessage('照片壓縮失敗，請改選較小的圖片再試', 'error');
+                });
             });
         }
       });
@@ -1913,38 +1963,54 @@
         dataUrl: dataUrl,
         link: '',
         uploading: true,
+        error: false,
         promise: null
       };
+      photos.push(item);
+      startPhotoUpload(item);
+      updatePhotoPreview();
+      updateTotalScore();
+    }
+
+    function startPhotoUpload(item) {
+      const dataUrl = getPhotoDataUrl(item);
+      if (!dataUrl) return Promise.resolve('');
       const filename = 'p' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
+      item.uploading = true;
+      item.error = false;
       item.promise = new Promise(function(resolve) {
+        var settled = false;
+        var timer = setTimeout(function() {
+          if (settled) return;
+          settled = true;
+          item.uploading = false;
+          item.error = true;
+          updatePhotoPreview();
+          resolve('');
+        }, 40000);
         google.script.run
           .withSuccessHandler(function(link) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
             item.link = link || '';
             item.uploading = false;
+            item.error = !item.link;
             updatePhotoPreview();
             resolve(item.link);
           })
           .withFailureHandler(function() {
-            google.script.run
-              .withSuccessHandler(function(link) {
-                item.link = link || '';
-                item.uploading = false;
-                updatePhotoPreview();
-                resolve(item.link);
-              })
-              .withFailureHandler(function() {
-                item.uploading = false;
-                item.error = true;
-                updatePhotoPreview();
-                resolve('');
-              })
-              .uploadSinglePhoto(dataUrl, filename);
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            item.uploading = false;
+            item.error = true;
+            updatePhotoPreview();
+            resolve('');
           })
           .uploadSinglePhoto(dataUrl, filename);
       });
-      photos.push(item);
-      updatePhotoPreview();
-      updateTotalScore();
+      return item.promise;
     }
     
     // 更新照片預覽
@@ -1954,11 +2020,18 @@
       
       photos.forEach(function(photo, index) {
         const div = document.createElement('div');
-        div.className = 'photo-item' + (photo && photo.uploading ? ' uploading' : '');
+        div.className = 'photo-item' + (photo && photo.uploading ? ' uploading' : '') + (photo && photo.error ? ' error' : '');
         
         const img = document.createElement('img');
         img.src = getPhotoDataUrl(photo);
         img.alt = '扣分照片 ' + (index + 1);
+        if (photo && photo.error && !photo.uploading) {
+          div.onclick = function(ev) {
+            if (ev.target && ev.target.classList && ev.target.classList.contains('remove-btn')) return;
+            startPhotoUpload(photo);
+            updatePhotoPreview();
+          };
+        }
         
         const removeBtn = document.createElement('button');
         removeBtn.className = 'remove-btn';
@@ -2070,14 +2143,7 @@
         const pending = photosToUpload.map(function(photo) {
           if (photo && photo.link) return Promise.resolve(photo.link);
           if (photo && photo.promise) return photo.promise;
-          const dataUrl = getPhotoDataUrl(photo);
-          return new Promise(function(resolve) {
-            const filename = 'p' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
-            google.script.run
-              .withSuccessHandler(function(link) { resolve(link || ''); })
-              .withFailureHandler(function() { resolve(''); })
-              .uploadSinglePhoto(dataUrl, filename);
-          });
+          return startPhotoUpload(photo);
         });
         Promise.all(pending).then(function(links) {
           const ok = links.filter(Boolean);
