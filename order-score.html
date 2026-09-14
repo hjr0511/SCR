@@ -254,6 +254,19 @@
     .photo-item .remove-btn:hover {
       background: rgba(255, 0, 0, 1);
     }
+
+    .photo-item.uploading::after {
+      content: '上傳中';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(230, 126, 34, 0.85);
+      color: #fff;
+      font-size: 12px;
+      text-align: center;
+      padding: 4px 0;
+    }
     
     .camera-btn, .file-btn {
       padding: 12px 24px;
@@ -755,6 +768,16 @@
         <label for="notes">備註／文字說明</label>
         <textarea id="notes" name="notes" rows="3" placeholder="G 項或其他行為請寫說明..."></textarea>
       </div>
+
+      <div class="photo-section" id="evidencePhotoSection">
+        <label>附上照片</label>
+        <p class="info-text">拍照當下就會開始上傳，作為佐證，不另外扣分。集會、巡堂、其他尤其建議拍照。</p>
+        <button type="button" class="camera-btn" id="cameraBtn">📷 開啟相機拍照</button>
+        <button type="button" class="file-btn" id="fileBtn">📁 選擇照片檔案</button>
+        <input type="file" id="fileInput" accept="image/*" multiple>
+        <div class="photo-preview" id="photoPreview"></div>
+        <p class="info-text">已附照片：<span id="photoCount">0</span> 張</p>
+      </div>
       
       <div class="score-summary bonus">
         <strong>總扣分：<span id="totalDeduction">0</span> 分</strong>
@@ -845,7 +868,7 @@
       }
     })();
     
-    let photos = []; // 儲存照片的 base64 字串陣列
+    let photos = []; // { dataUrl, link, uploading, promise }
     let allClassrooms = []; // 儲存所有教室資料
     let currentClassrooms = []; // 儲存當前載入的教室清單（包含順序資訊）
     let isStudentLogin = false; // 標記是否為學生登入
@@ -1470,6 +1493,35 @@
       });
       
       // 注意：評分時段現在是隱藏欄位，只在 modal 中設定
+
+      const cameraBtn = document.getElementById('cameraBtn');
+      const fileBtn = document.getElementById('fileBtn');
+      const fileInput = document.getElementById('fileInput');
+      if (cameraBtn && fileInput) {
+        cameraBtn.addEventListener('click', function() {
+          fileInput.setAttribute('capture', 'environment');
+          fileInput.removeAttribute('webkitdirectory');
+          fileInput.removeAttribute('directory');
+          fileInput.click();
+          setTimeout(function() {
+            fileInput.removeAttribute('capture');
+          }, 100);
+        });
+      }
+      if (fileBtn && fileInput) {
+        fileBtn.addEventListener('click', function() {
+          fileInput.removeAttribute('capture');
+          fileInput.removeAttribute('webkitdirectory');
+          fileInput.removeAttribute('directory');
+          fileInput.click();
+        });
+      }
+      if (fileInput) {
+        fileInput.addEventListener('change', function(e) {
+          handleFileSelect(e.target.files);
+          e.target.value = '';
+        });
+      }
       
       ['itemA','itemB','itemNone','itemC','itemD','itemE','itemF','itemG'].forEach(function(id) {
         const el = document.getElementById(id);
@@ -1827,57 +1879,88 @@
       });
     }
     
-    // 處理檔案選擇（添加圖片壓縮）
+    // 處理檔案選擇（添加圖片壓縮，拍完即上傳）
     function handleFileSelect(files) {
       Array.from(files).forEach(function(file) {
         if (file.type.startsWith('image/')) {
-          // 壓縮成約 400px、品質 32%，評分紀錄已夠看，上傳也較快
-          compressImage(file, 400, 400, 0.32)
+          compressImage(file, 320, 320, 0.25)
             .then(function(compressedBase64) {
-              photos.push(compressedBase64);
-              updatePhotoPreview();
-              updateTotalScore();
-              
-              // 計算壓縮後的大小
-              const originalSize = file.size;
-              const compressedSize = compressedBase64.length * 0.75; // base64 大約是原始大小的 133%
-              const compressionRatio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
-              console.log('圖片壓縮完成：原始大小 ' + (originalSize / 1024).toFixed(2) + ' KB，壓縮後 ' + (compressedSize / 1024).toFixed(2) + ' KB，節省 ' + compressionRatio + '%');
+              addPhotoAndUpload(compressedBase64);
             })
-            .catch(function(error) {
-              // 如果壓縮失敗，使用原始圖片
+            .catch(function() {
               const reader = new FileReader();
               reader.onload = function(e) {
-                photos.push(e.target.result);
-                updatePhotoPreview();
-                updateTotalScore();
+                addPhotoAndUpload(e.target.result);
               };
               reader.readAsDataURL(file);
             });
         }
       });
     }
+
+    function getPhotoDataUrl(photo) {
+      return typeof photo === 'string' ? photo : (photo && photo.dataUrl) || '';
+    }
+
+    function addPhotoAndUpload(dataUrl) {
+      const item = {
+        dataUrl: dataUrl,
+        link: '',
+        uploading: true,
+        promise: null
+      };
+      const filename = 'order_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
+      item.promise = new Promise(function(resolve) {
+        google.script.run
+          .withSuccessHandler(function(link) {
+            item.link = link || '';
+            item.uploading = false;
+            updatePhotoPreview();
+            resolve(item.link);
+          })
+          .withFailureHandler(function() {
+            google.script.run
+              .withSuccessHandler(function(link) {
+                item.link = link || '';
+                item.uploading = false;
+                updatePhotoPreview();
+                resolve(item.link);
+              })
+              .withFailureHandler(function() {
+                item.uploading = false;
+                item.error = true;
+                updatePhotoPreview();
+                resolve('');
+              })
+              .uploadSinglePhoto(dataUrl, filename);
+          })
+          .uploadSinglePhoto(dataUrl, filename);
+      });
+      photos.push(item);
+      updatePhotoPreview();
+    }
     
     // 更新照片預覽
     function updatePhotoPreview() {
       const preview = document.getElementById('photoPreview');
+      if (!preview) return;
       preview.innerHTML = '';
       
       photos.forEach(function(photo, index) {
         const div = document.createElement('div');
-        div.className = 'photo-item';
+        div.className = 'photo-item' + (photo && photo.uploading ? ' uploading' : '');
         
         const img = document.createElement('img');
-        img.src = photo;
-        img.alt = '扣分照片 ' + (index + 1);
+        img.src = getPhotoDataUrl(photo);
+        img.alt = '佐證照片 ' + (index + 1);
         
         const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
         removeBtn.className = 'remove-btn';
         removeBtn.textContent = '×';
         removeBtn.onclick = function() {
           photos.splice(index, 1);
           updatePhotoPreview();
-          updateTotalScore();
         };
         
         div.appendChild(img);
@@ -1885,7 +1968,8 @@
         preview.appendChild(div);
       });
       
-      document.getElementById('photoDeduction').textContent = photos.length;
+      const countEl = document.getElementById('photoCount');
+      if (countEl) countEl.textContent = String(photos.length);
     }
     
     function isNapCategory() {
@@ -2003,25 +2087,69 @@
       };
       
       submitBtn.disabled = true;
-      submitBtn.textContent = '提交評分資料中...';
-      
-      google.script.run
-        .withSuccessHandler(function(result) {
-          if (result.success) {
-            result.message = '評分記錄已成功儲存！';
-            handleSubmitSuccess(result, classroomName);
-          } else {
-            showMessage(result.message, 'error');
+      const photosToUpload = photos.slice();
+      const expectedPhotoCount = photosToUpload.length;
+
+      function sendScore(photoLinks) {
+        dataToSubmit.photoLinks = (photoLinks || []).filter(Boolean).join('; ');
+        submitBtn.textContent = '提交評分資料中...';
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result.success) {
+              const uploaded = (photoLinks || []).filter(Boolean).length;
+              if (result.replaced) {
+                result.message = '已覆蓋您今天稍早對本班的評分（其他老師的分數不受影響）';
+              } else {
+                result.message = '評分記錄已成功儲存！';
+              }
+              if (uploaded > 0) {
+                result.message += ' 已附上 ' + uploaded + ' 張照片';
+              }
+              showMessage(result.message, 'success');
+              handleSubmitSuccess(result, classroomName);
+            } else {
+              showMessage(result.message, 'error');
+              submitBtn.disabled = false;
+              submitBtn.textContent = '提交評分';
+            }
+          })
+          .withFailureHandler(function(error) {
+            showMessage('提交失敗：' + (error.message || error.toString()), 'error');
             submitBtn.disabled = false;
             submitBtn.textContent = '提交評分';
+          })
+          .saveScore(dataToSubmit);
+      }
+
+      if (photosToUpload.length > 0) {
+        submitBtn.textContent = '上傳照片中...';
+        const pending = photosToUpload.map(function(photo) {
+          if (photo && photo.link) return Promise.resolve(photo.link);
+          if (photo && photo.promise) return photo.promise;
+          const dataUrl = getPhotoDataUrl(photo);
+          return new Promise(function(resolve) {
+            const filename = 'order_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
+            google.script.run
+              .withSuccessHandler(function(link) { resolve(link || ''); })
+              .withFailureHandler(function() { resolve(''); })
+              .uploadSinglePhoto(dataUrl, filename);
+          });
+        });
+        Promise.all(pending).then(function(links) {
+          const ok = links.filter(Boolean);
+          if (ok.length === 0 && expectedPhotoCount > 0) {
+            const confirmContinue = confirm('所有照片上傳失敗。是否仍要提交評分（不含照片）？');
+            if (!confirmContinue) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = '提交評分';
+              return;
+            }
           }
-        })
-        .withFailureHandler(function(error) {
-          showMessage('提交失敗：' + (error.message || error.toString()), 'error');
-          submitBtn.disabled = false;
-          submitBtn.textContent = '提交評分';
-        })
-        .saveScore(dataToSubmit);
+          sendScore(ok);
+        });
+      } else {
+        sendScore([]);
+      }
     }
     
     function showUploadSuccessModal() {
@@ -2063,6 +2191,8 @@
         }
       }
       
+      photos = [];
+      updatePhotoPreview();
       if (document.getElementById('itemNone')) document.getElementById('itemNone').checked = true;
       if (document.getElementById('itemC')) document.getElementById('itemC').checked = false;
       ['itemD','itemE','itemF','itemG'].forEach(function(id) {
@@ -2074,8 +2204,11 @@
       updateTotalScore();
       // 保留評分人員年級、評分人員類型、評分人員姓名、評分區域、評分時段（已自動儲存）
       
-      submitBtn.disabled = false;
-      submitBtn.textContent = '提交評分';
+      const submitBtn = document.getElementById('submitBtn');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '提交評分';
+      }
     }
     
     // 顯示訊息
@@ -2089,7 +2222,7 @@
       
       setTimeout(function() {
         messageDiv.style.display = 'none';
-      }, type === 'error' ? 3000 : 1000);
+      }, type === 'error' || (text && String(text).indexOf('覆蓋') >= 0) ? 3000 : 1000);
     }
   </script>
 </body>

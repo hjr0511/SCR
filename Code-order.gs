@@ -1,6 +1,6 @@
 /**
  * 學校秩序評分系統（生輔組）
- * 午休 A–G 加扣分、集會／巡堂登記；不拍照。
+ * 午休 A–G 加扣分、集會／巡堂登記；可即拍即上傳佐證照片（不另扣分）。
  *
  * 請綁在「秩序專用」Google 試算表，部署成網頁應用程式：
  * 執行身分＝我，存取權＝任何人。前端網址請填入 js/config-order.js。
@@ -61,7 +61,7 @@ function initializeSheets() {
   if (!scoresSheet) {
     scoresSheet = ss.insertSheet(SHEET_NAMES.SCORES);
     // 設定標題列
-    scoresSheet.getRange(1, 1, 1, 15).setValues([[
+    scoresSheet.getRange(1, 1, 1, 16).setValues([[
       '評分時間', 
       '評分年級', 
       '被評年級',
@@ -76,9 +76,10 @@ function initializeSheets() {
       '加分',
       '總分（加分-扣分）', 
       '備註',
-      '細項說明'
+      '細項說明',
+      '照片連結'
     ]]);
-    scoresSheet.getRange(1, 1, 1, 15).setFontWeight('bold');
+    scoresSheet.getRange(1, 1, 1, 16).setFontWeight('bold');
   } else {
     // 如果工作表已存在，檢查是否有「照片連結」欄位
     const headers = scoresSheet.getRange(1, 1, 1, scoresSheet.getLastColumn()).getValues()[0];
@@ -264,7 +265,7 @@ function uploadPhotoToDrive(base64Data, filename) {
       throw new Error('參數無效');
     }
     
-    const folderName = '學校整潔評分照片';
+    const folderName = '學校秩序評分照片';
     let folder = null;
     
     // 先檢查緩存（優化：優先使用緩存，避免重複查找和 API 調用）
@@ -356,7 +357,7 @@ function getPhotoFolderLink() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const ssFile = DriveApp.getFileById(ss.getId());
-    const folderName = '學校整潔評分照片';
+    const folderName = '學校秩序評分照片';
     
     // 取得試算表所在的資料夾
     let parentFolder;
@@ -490,6 +491,48 @@ function finalizePhotoUpload(filename) {
   return uploadSinglePhoto(parts.join(''), filename);
 }
 
+function orderScoreDateKey_(value) {
+  try {
+    const d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return '';
+    return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  } catch (err) {
+    return '';
+  }
+}
+
+function isOrderTeacherEvaluator_(type) {
+  const text = String(type || '').trim();
+  if (!text) return false;
+  if (text.indexOf('風紀股長') >= 0) return false;
+  return true;
+}
+
+function findOwnOrderScoreRow_(sheet, scoreData, category) {
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return 0;
+  const todayKey = orderScoreDateKey_(new Date());
+  const evaluator = String(scoreData.evaluator || '未指定').trim();
+  const evaluatorType = String(scoreData.evaluatorType || '').trim();
+  const classroomName = String(scoreData.classroomName || '').trim();
+  const classroomId = String(scoreData.classroomId || '').trim();
+  const cat = String(category || '').trim();
+
+  for (let i = data.length - 1; i >= 1; i--) {
+    const row = data[i];
+    if (orderScoreDateKey_(row[0]) !== todayKey) continue;
+    if (String(row[4] || '').trim() !== evaluator) continue;
+    if (String(row[3] || '').trim() !== evaluatorType) continue;
+    if (String(row[8] || '').trim() !== cat) continue;
+    const rowName = String(row[6] || '').trim();
+    const rowId = String(row[5] || '').trim();
+    const sameClass = classroomName ? rowName === classroomName : (!!classroomId && rowId === classroomId);
+    if (!sameClass) continue;
+    return i + 1;
+  }
+  return 0;
+}
+
 function saveScore(scoreData) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -508,7 +551,7 @@ function saveScore(scoreData) {
     
     let bonus = Number(scoreData.bonus) || 0;
     let deduction = Number(scoreData.directDeduction) || 0;
-    let itemSummary = String(scoreData.itemSummary || scoreData.photoLinks || '').trim();
+    let itemSummary = String(scoreData.itemSummary || '').trim();
     
     const isNap = category.indexOf('午休') >= 0;
     const hasItemFlags = items.A || items.B || items.C || items.D || items.E || items.F || items.G;
@@ -551,6 +594,7 @@ function saveScore(scoreData) {
     }
     
     const totalScore = bonus - deduction;
+    const photoLinks = String(scoreData.photoLinks || '').trim();
     
     let evaluatedGrade = '';
     function extractGradeFromName(name) {
@@ -593,14 +637,28 @@ function saveScore(scoreData) {
       bonus,
       totalScore,
       notes,
-      itemSummary
+      itemSummary,
+      photoLinks
     ];
     
-    sheet.appendRow(newRow);
+    let replaced = false;
+    if (isOrderTeacherEvaluator_(scoreData.evaluatorType)) {
+      const existingRow = findOwnOrderScoreRow_(sheet, scoreData, category);
+      if (existingRow) {
+        sheet.getRange(existingRow, 1, 1, newRow.length).setValues([newRow]);
+        replaced = true;
+      }
+    }
+    if (!replaced) {
+      sheet.appendRow(newRow);
+    }
     
     return {
       success: true,
-      message: '評分記錄已儲存',
+      message: replaced
+        ? '已用本次評分覆蓋您今天稍早的紀錄（未更動其他老師）'
+        : '評分記錄已儲存',
+      replaced: replaced,
       timestamp: timestamp,
       totalScore: totalScore,
       itemSummary: itemSummary
@@ -786,7 +844,8 @@ function getScoreRecords(classroomId, classroomName, grade) {
         const bonus = Number(row[11]) || 0;
         const totalScore = Number(row[12]) || 0;
         const notes = row[13] ? String(row[13]) : '';
-        const photoLinks = row[14] ? String(row[14]) : '';
+        const itemSummary = row[14] ? String(row[14]) : '';
+        const photoLinks = row[15] ? String(row[15]) : '';
         
         return {
           timestamp: timestamp,
@@ -803,6 +862,7 @@ function getScoreRecords(classroomId, classroomName, grade) {
           bonus: bonus,
           totalScore: totalScore,
           notes: notes,
+          itemSummary: itemSummary,
           photoLinks: photoLinks
         };
       } catch (err) {

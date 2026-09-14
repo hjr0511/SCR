@@ -755,6 +755,7 @@
               <th>總分</th>
               <th>備註</th>
               <th>細項</th>
+              <th>照片</th>
             </tr>
           </thead>
           <tbody id="recordsTableBody">
@@ -1422,9 +1423,23 @@
             return div.innerHTML;
           }
           
-          const itemSummaryHtml = (record.photoLinks && String(record.photoLinks).trim())
-            ? escapeHtml(record.photoLinks)
+          const itemSummaryHtml = (record.itemSummary && String(record.itemSummary).trim())
+            ? escapeHtml(record.itemSummary)
             : '<span style="color: #999;">無</span>';
+
+          let photoLinksHtml = '<span style="color: #999;">無</span>';
+          if (record.photoLinks && String(record.photoLinks).trim() !== '') {
+            const links = String(record.photoLinks)
+              .split(/[;\s]+/)
+              .map(function(link) { return link.trim(); })
+              .filter(function(link) { return link.indexOf('http') === 0; });
+            if (links.length > 0) {
+              photoLinksHtml = links.map(function(link, index) {
+                const escapedLink = link.replace(/"/g, '&quot;');
+                return '<a href="' + escapedLink + '" target="_blank" class="photo-link">照片' + (index + 1) + '</a>';
+              }).join(' ');
+            }
+          }
           
           // 格式化時間顯示
           function formatTimestamp(timestamp) {
@@ -1471,7 +1486,8 @@
             '<td>' + (parseFloat(record.bonus) || 0) + '</td>' +
             '<td class="' + scoreClass + '">' + totalScore.toFixed(1) + '</td>' +
             '<td>' + escapeHtml(record.notes || '') + '</td>' +
-            '<td>' + itemSummaryHtml + '</td>';
+            '<td>' + itemSummaryHtml + '</td>' +
+            '<td class="photo-links">' + photoLinksHtml + '</td>';
           
           tbody.appendChild(tr);
         });
