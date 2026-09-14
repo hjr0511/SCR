@@ -1164,17 +1164,7 @@
       loadFormData();
       // 再次檢查並設定學生身份（在資料載入後）
       checkLoginType();
-      setTimeout(warmupPhotoUpload, 3000);
     };
-
-    function warmupPhotoUpload() {
-      try {
-        google.script.run
-          .withSuccessHandler(function() {})
-          .withFailureHandler(function() {})
-          .ping();
-      } catch (err) {}
-    }
     
     // 先檢查登入類型（只設定標記，不進行其他操作）
     function checkLoginTypeFirst() {

@@ -213,7 +213,7 @@
       script.onerror = function () {
         setTimeout(function () {
           fail(new Error('連線暫時失敗，請再試一次。'));
-        }, 2000);
+        }, 600);
       };
       var qs = [
         'action=' + encodeURIComponent(payload.action || ''),
@@ -387,7 +387,7 @@
   var iframeWarmed = false;
 
   function uploadPhotoByChunks(base64, filename) {
-    var chunkSize = 1200;
+    var chunkSize = 4000;
     var data = String(base64 || '');
     var comma = data.indexOf(',');
     if (comma >= 0) data = data.substring(comma + 1);
@@ -408,9 +408,7 @@
 
     function sendNext() {
       if (index >= total) {
-        return delay(300).then(function () {
-          return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000);
-        }).catch(function () {
+        return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000).catch(function () {
           return delay(500).then(function () {
             return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000);
           });
@@ -418,9 +416,7 @@
       }
       var current = index;
       index += 1;
-      return sendChunk(current, 0).then(function () {
-        return delay(40).then(sendNext);
-      });
+      return sendChunk(current, 0).then(sendNext);
     }
 
     return sendNext();
