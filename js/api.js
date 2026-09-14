@@ -91,7 +91,7 @@
     } catch (err) {}
   }
 
-  function waitForBridge(timeoutMs) {
+  function waitForBridge(timeoutMs, markFailed) {
     if (iframeReady) return Promise.resolve(true);
     if (iframeFailed || !isConfigured()) return Promise.resolve(false);
     ensureIframe();
@@ -100,7 +100,7 @@
       var timer = setTimeout(function () {
         if (settled) return;
         settled = true;
-        iframeFailed = true;
+        if (markFailed !== false) iframeFailed = true;
         resolve(false);
       }, timeoutMs || 2500);
       readyWaiters.push({
@@ -114,27 +114,31 @@
     });
   }
 
+  function postCall(action, args) {
+    return new Promise(function (resolve, reject) {
+      var id = 'c' + (++callId);
+      pending[id] = { resolve: resolve, reject: reject };
+      postToBridge({
+        type: 'gas-call',
+        id: id,
+        action: action,
+        args: args || [],
+        authPassword: MUTATING[action] ? getAuthPassword() : ''
+      });
+      setTimeout(function () {
+        if (!pending[id]) return;
+        delete pending[id];
+        reject(new Error('呼叫後端逾時：' + action));
+      }, 120000);
+    });
+  }
+
   function callViaIframe(action, args) {
     return waitForBridge(2500).then(function (ok) {
       if (!ok || !iframe || !iframe.contentWindow) {
         throw new Error('NO_IFRAME');
       }
-      return new Promise(function (resolve, reject) {
-        var id = 'c' + (++callId);
-        pending[id] = { resolve: resolve, reject: reject };
-        postToBridge({
-          type: 'gas-call',
-          id: id,
-          action: action,
-          args: args || [],
-          authPassword: MUTATING[action] ? getAuthPassword() : ''
-        });
-        setTimeout(function () {
-          if (!pending[id]) return;
-          delete pending[id];
-          reject(new Error('呼叫後端逾時：' + action));
-        }, 120000);
-      });
+      return postCall(action, args);
     });
   }
 
@@ -203,9 +207,13 @@
     });
   }
 
+  var iframeMissedOnce = false;
+
   function uploadPhotoByChunks(base64, filename) {
-    var chunkSize = 2400;
+    var chunkSize = 3200;
     var data = String(base64 || '');
+    var comma = data.indexOf(',');
+    if (comma >= 0) data = data.substring(comma + 1);
     var total = Math.ceil(data.length / chunkSize) || 1;
     var tasks = [];
     var n;
@@ -217,8 +225,30 @@
         };
       })(n));
     }
-    return runPool(tasks, 8).then(function () {
+    return runPool(tasks, 10).then(function () {
       return jsonpGet(buildPayload('finalizePhotoUpload', [filename]));
+    });
+  }
+
+  function uploadSinglePhotoFast(base64, filename) {
+    ensureIframe();
+    if (iframeReady) {
+      return postCall('uploadSinglePhoto', [base64, filename]).catch(function () {
+        return uploadPhotoByChunks(base64, filename);
+      });
+    }
+    if (iframeFailed || iframeMissedOnce) {
+      return uploadPhotoByChunks(base64, filename);
+    }
+    return waitForBridge(400, false).then(function (ok) {
+      if (!ok || !iframe || !iframe.contentWindow) {
+        iframeMissedOnce = true;
+        return uploadPhotoByChunks(base64, filename);
+      }
+      return postCall('uploadSinglePhoto', [base64, filename]);
+    }).catch(function () {
+      iframeMissedOnce = true;
+      return uploadPhotoByChunks(base64, filename);
     });
   }
 
@@ -250,9 +280,7 @@
     }
     args = args || [];
     if (action === 'uploadSinglePhoto') {
-      return callViaIframe(action, args).catch(function () {
-        return uploadPhotoByChunks(args[0], args[1]);
-      });
+      return uploadSinglePhotoFast(args[0], args[1]);
     }
     if (action === 'getAllClassrooms') {
       return jsonpGet(buildPayload(action, args), 90000).catch(function () {
@@ -267,6 +295,7 @@
     if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'gas-ready') {
       iframeReady = true;
+      iframeMissedOnce = false;
       readyWaiters.splice(0).forEach(function (item) {
         if (item.resolve) item.resolve();
       });
@@ -323,6 +352,7 @@
 
   function boot() {
     if (!isConfigured()) showConfigError();
+    else ensureIframe();
   }
   if (document.body) boot();
   else document.addEventListener('DOMContentLoaded', boot);

@@ -1004,7 +1004,17 @@
       // 再次檢查並設定學生身份（在資料載入後）
       checkLoginType();
       toggleCategorySections();
+      warmupPhotoUpload();
     };
+
+    function warmupPhotoUpload() {
+      try {
+        google.script.run
+          .withSuccessHandler(function() {})
+          .withFailureHandler(function() {})
+          .getPhotoFolderLink();
+      } catch (err) {}
+    }
     
     // 先檢查登入類型（只設定標記，不進行其他操作）
     function checkLoginTypeFirst() {
@@ -1833,39 +1843,65 @@
         .getClassrooms(grade);
     }
     
-    // 壓縮圖片（優化上傳速度）
+    // 壓縮圖片（秩序佐證只要能看清即可，縮小可大幅加快上傳）
     function compressImage(file, maxWidth, maxHeight, quality) {
+      function drawToJpeg(source, srcW, srcH) {
+        let width = srcW;
+        let height = srcH;
+        if (width > height) {
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+        } else if (height > maxHeight) {
+          width = (width * maxHeight) / height;
+          height = maxHeight;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(width));
+        canvas.height = Math.max(1, Math.round(height));
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        if (source.close) source.close();
+        return canvas.toDataURL('image/jpeg', quality);
+      }
+
+      if (typeof createImageBitmap === 'function') {
+        return createImageBitmap(file).then(function(bitmap) {
+          return drawToJpeg(bitmap, bitmap.width, bitmap.height);
+        }).catch(function() {
+          return compressImageWithFileReader(file, maxWidth, maxHeight, quality);
+        });
+      }
+      return compressImageWithFileReader(file, maxWidth, maxHeight, quality);
+    }
+
+    function compressImageWithFileReader(file, maxWidth, maxHeight, quality) {
       return new Promise(function(resolve, reject) {
         const reader = new FileReader();
         reader.onload = function(e) {
           const img = new Image();
           img.onload = function() {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            // 計算縮放比例，保持寬高比
-            if (width > height) {
-              if (width > maxWidth) {
-                height = (height * maxWidth) / width;
-                width = maxWidth;
-              }
-            } else {
-              if (height > maxHeight) {
+            try {
+              let width = img.width;
+              let height = img.height;
+              if (width > height) {
+                if (width > maxWidth) {
+                  height = (height * maxWidth) / width;
+                  width = maxWidth;
+                }
+              } else if (height > maxHeight) {
                 width = (width * maxHeight) / height;
                 height = maxHeight;
               }
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round(width));
+              canvas.height = Math.max(1, Math.round(height));
+              canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+              resolve(canvas.toDataURL('image/jpeg', quality));
+            } catch (err) {
+              reject(err);
             }
-            
-            canvas.width = width;
-            canvas.height = height;
-            
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // 轉換為 base64，使用指定的壓縮品質
-            const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-            resolve(compressedBase64);
           };
           img.onerror = function() {
             reject(new Error('圖片載入失敗'));
@@ -1883,16 +1919,18 @@
     function handleFileSelect(files) {
       Array.from(files).forEach(function(file) {
         if (file.type.startsWith('image/')) {
-          compressImage(file, 320, 320, 0.25)
+          compressImage(file, 240, 240, 0.22)
             .then(function(compressedBase64) {
               addPhotoAndUpload(compressedBase64);
             })
             .catch(function() {
-              const reader = new FileReader();
-              reader.onload = function(e) {
-                addPhotoAndUpload(e.target.result);
-              };
-              reader.readAsDataURL(file);
+              compressImage(file, 200, 200, 0.18)
+                .then(function(compressedBase64) {
+                  addPhotoAndUpload(compressedBase64);
+                })
+                .catch(function() {
+                  showMessage('照片壓縮失敗，請改選較小的圖片再試', 'error');
+                });
             });
         }
       });
@@ -1919,20 +1957,10 @@
             resolve(item.link);
           })
           .withFailureHandler(function() {
-            google.script.run
-              .withSuccessHandler(function(link) {
-                item.link = link || '';
-                item.uploading = false;
-                updatePhotoPreview();
-                resolve(item.link);
-              })
-              .withFailureHandler(function() {
-                item.uploading = false;
-                item.error = true;
-                updatePhotoPreview();
-                resolve('');
-              })
-              .uploadSinglePhoto(dataUrl, filename);
+            item.uploading = false;
+            item.error = true;
+            updatePhotoPreview();
+            resolve('');
           })
           .uploadSinglePhoto(dataUrl, filename);
       });
