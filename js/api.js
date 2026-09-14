@@ -314,7 +314,8 @@
 
   function tryIframePhotoUpload(base64, filename, timeoutMs) {
     ensureIframe();
-    return pingBridge(2000).then(function (ok) {
+    var ready = iframeReady ? Promise.resolve(true) : pingBridge(2000);
+    return ready.then(function (ok) {
       if (!ok || !iframe || !iframe.contentWindow) {
         throw new Error('NO_IFRAME');
       }
