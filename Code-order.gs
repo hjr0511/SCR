@@ -26,6 +26,9 @@ const AREAS = ['教室'];
 // 評比項目
 const TIME_SLOTS = ['午休狀況', '重要集會', '課間巡堂', '其他'];
 
+// 每週統計基準分：週總分 = 75 + 當週評分加減
+const ORDER_WEEKLY_BASE_SCORE = 75;
+
 // 評分人員類型
 const EVALUATOR_TYPES = ['風紀股長', '校安人員', '師長', '巡堂教師', '生輔組', '校長及業管'];
 
@@ -98,7 +101,7 @@ function initializeSheets() {
   if (!scoresSheet) {
     scoresSheet = ss.insertSheet(SHEET_NAMES.SCORES);
     // 設定標題列
-    scoresSheet.getRange(1, 1, 1, 16).setValues([[
+    scoresSheet.getRange(1, 1, 1, 15).setValues([[
       '評分時間', 
       '評分年級', 
       '被評年級',
@@ -108,17 +111,16 @@ function initializeSheets() {
       '教室名稱', 
       '評比地點',
       '評比項目',
-      '扣分', 
-      '直接扣分',
+      '扣分',
       '加分',
       '總分（加分-扣分）', 
       '備註',
       '細項說明',
       '照片連結'
     ]]);
-    scoresSheet.getRange(1, 1, 1, 16).setFontWeight('bold');
+    scoresSheet.getRange(1, 1, 1, 15).setFontWeight('bold');
   } else {
-    // 如果工作表已存在，檢查是否有「照片連結」欄位
+    dropOrderDirectDeductionColumn_(scoresSheet);
     const headers = scoresSheet.getRange(1, 1, 1, scoresSheet.getLastColumn()).getValues()[0];
     const hasPhotoLinkColumn = headers.includes('照片連結');
     
@@ -144,6 +146,84 @@ function initializeSheets() {
     settingsSheet.getRange(3, 1, 1, 2).setValues([['學生密碼', '5678']]);
     settingsSheet.getRange(4, 1, 1, 2).setValues([['管理員密碼', '9999']]);
   }
+}
+
+function dropOrderDirectDeductionColumn_(sheet) {
+  if (!sheet) return;
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return;
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  for (let i = headers.length - 1; i >= 0; i--) {
+    if (String(headers[i] || '').trim() === '直接扣分') {
+      sheet.deleteColumn(i + 1);
+    }
+  }
+}
+
+function getOrderScoresSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+  if (!sheet) {
+    initializeSheets();
+    sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+  } else {
+    dropOrderDirectDeductionColumn_(sheet);
+  }
+  return sheet;
+}
+
+function getOrderScoreColMap_(headers) {
+  const names = (headers || []).map(function(h) {
+    return String(h || '').trim();
+  });
+  function findCol(label, fallback) {
+    const i = names.indexOf(label);
+    return i >= 0 ? i : fallback;
+  }
+  function findTotalCol(fallback) {
+    for (let i = 0; i < names.length; i++) {
+      if (names[i] === '總分' || names[i].indexOf('總分') === 0) return i;
+    }
+    return fallback;
+  }
+  const hasDirect = names.indexOf('直接扣分') >= 0;
+  return {
+    timestamp: findCol('評分時間', 0),
+    evaluatorGrade: findCol('評分年級', 1),
+    evaluatedGrade: findCol('被評年級', 2),
+    evaluatorType: findCol('評分人員類型', 3),
+    evaluator: findCol('評分人員', 4),
+    classroomId: findCol('教室編號', 5),
+    classroomName: findCol('教室名稱', 6),
+    area: findCol('評比地點', 7),
+    timeSlot: findCol('評比項目', 8),
+    deduction: findCol('扣分', 9),
+    bonus: findCol('加分', hasDirect ? 11 : 10),
+    totalScore: findTotalCol(hasDirect ? 12 : 11),
+    notes: findCol('備註', hasDirect ? 13 : 12),
+    itemSummary: findCol('細項說明', hasDirect ? 14 : 13),
+    photoLinks: findCol('照片連結', hasDirect ? 15 : 14)
+  };
+}
+
+function applyOrderWeeklyBaseScore_(item) {
+  if (!item) return item;
+  const delta = Number(item.totalScore) || 0;
+  item.scoreDelta = delta;
+  item.totalScore = ORDER_WEEKLY_BASE_SCORE + delta;
+  return item;
+}
+
+function applyOrderWeeklyBaseToMap_(map) {
+  Object.keys(map || {}).forEach(function(key) {
+    applyOrderWeeklyBaseScore_(map[key]);
+  });
+}
+
+function applyOrderWeeklyBaseToGradeGroups_(gradeGroups) {
+  Object.keys(gradeGroups || {}).forEach(function(grade) {
+    applyOrderWeeklyBaseToMap_(gradeGroups[grade]);
+  });
 }
 
 /**
@@ -498,13 +578,7 @@ function findOwnOrderScoreRow_(sheet, scoreData, category) {
 
 function saveScore(scoreData) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
-    
-    if (!sheet) {
-      initializeSheets();
-      sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
-    }
+    const sheet = getOrderScoresSheet_();
     
     const now = new Date();
     const timestamp = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
@@ -518,7 +592,8 @@ function saveScore(scoreData) {
     
     const isNap = category.indexOf('午休') >= 0;
     const hasItemFlags = items.A || items.B || items.C || items.D || items.E || items.F || items.G;
-    if (isNap || hasItemFlags) {
+    const itemBased = isNap || hasItemFlags;
+    if (itemBased) {
       bonus = 0;
       deduction = 0;
       const parts = [];
@@ -596,7 +671,6 @@ function saveScore(scoreData) {
       scoreData.area || '教室',
       category,
       deduction,
-      deduction,
       bonus,
       totalScore,
       notes,
@@ -642,8 +716,7 @@ function saveScore(scoreData) {
  * @return {Object} 統計資料
  */
 function getScoreStatistics(classroomId) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+  const sheet = getOrderScoresSheet_();
   
   if (!sheet) {
     return { totalRecords: 0, averageDeduction: 0 };
@@ -681,8 +754,7 @@ function getScoreStatistics(classroomId) {
  */
 function getScoreRecords(classroomId, classroomName, grade) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+    const sheet = getOrderScoresSheet_();
     
     if (!sheet) {
       Logger.log('找不到評分記錄工作表');
@@ -700,6 +772,7 @@ function getScoreRecords(classroomId, classroomName, grade) {
     
     // 取得標題列
     const headers = data[0];
+    const col = getOrderScoreColMap_(headers);
     Logger.log('標題列：' + headers.join(', '));
     
     // 取得資料列（跳過標題列）
@@ -802,13 +875,12 @@ function getScoreRecords(classroomId, classroomName, grade) {
         const classroomName = row[6] ? String(row[6]) : '';
         const area = row[7] ? String(row[7]) : '';
         const timeSlot = row[8] ? String(row[8]) : '';
-        const photoDeduction = Number(row[9]) || 0;
-        const directDeduction = Number(row[10]) || 0;
-        const bonus = Number(row[11]) || 0;
-        const totalScore = Number(row[12]) || 0;
-        const notes = row[13] ? String(row[13]) : '';
-        const itemSummary = row[14] ? String(row[14]) : '';
-        const photoLinks = row[15] ? String(row[15]) : '';
+        const photoDeduction = Number(row[col.deduction]) || 0;
+        const bonus = Number(row[col.bonus]) || 0;
+        const totalScore = Number(row[col.totalScore]) || 0;
+        const notes = row[col.notes] ? String(row[col.notes]) : '';
+        const itemSummary = row[col.itemSummary] ? String(row[col.itemSummary]) : '';
+        const photoLinks = row[col.photoLinks] ? String(row[col.photoLinks]) : '';
         
         return {
           timestamp: timestamp,
@@ -821,7 +893,7 @@ function getScoreRecords(classroomId, classroomName, grade) {
           area: area,
           timeSlot: timeSlot,
           photoDeduction: photoDeduction,
-          directDeduction: directDeduction,
+          directDeduction: 0,
           bonus: bonus,
           totalScore: totalScore,
           notes: notes,
@@ -872,8 +944,7 @@ function getScoreRecords(classroomId, classroomName, grade) {
  */
 function getWeeklyStatistics(weekStartDate) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+    const sheet = getOrderScoresSheet_();
     
     if (!sheet) {
       return { error: '找不到評分記錄工作表' };
@@ -883,6 +954,7 @@ function getWeeklyStatistics(weekStartDate) {
     if (data.length <= 1) {
       return { error: '沒有評分記錄' };
     }
+    const col = getOrderScoreColMap_(data[0]);
     
     // 計算週的開始和結束日期
     let weekStart;
@@ -920,7 +992,6 @@ function getWeeklyStatistics(weekStartDate) {
     });
     
     // 按年級和「教室名稱」分組，計算總分
-    // row[2] = 被評年級, row[5] = 教室編號, row[6] = 教室名稱, row[12] = 總分
     // 這裡只用「教室名稱」作為分組依據，同名教室視為同一班級來統計
     const gradeGroups = {};
     
@@ -952,7 +1023,7 @@ function getWeeklyStatistics(weekStartDate) {
       let grade = String(row[2] || '').trim(); // 被評年級
       const classroomId = String(row[5] || '').trim();   // 教室編號（例如：仁愛五樓）
       const classroomName = String(row[6] || '').trim(); // 教室名稱（例如：控制一忠、冷凍一孝）
-      const totalScore = Number(row[12]) || 0;           // 單次總分
+      const totalScore = Number(row[col.totalScore]) || 0;           // 單次總分
       
       // 使用「教室名稱」作為分組 key，只依名稱統計
       const classroomKey = classroomName;
@@ -985,6 +1056,8 @@ function getWeeklyStatistics(weekStartDate) {
       gradeGroups[grade][classroomKey].totalScore += totalScore;
       gradeGroups[grade][classroomKey].recordCount += 1;
     });
+
+    applyOrderWeeklyBaseToGradeGroups_(gradeGroups);
     
     // 轉換為陣列並排序，找出特優和優等（處理同分名次）
     const result = {};
@@ -1047,6 +1120,7 @@ function getWeeklyStatistics(weekStartDate) {
       success: true,
       weekStart: Utilities.formatDate(weekStart, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
       weekEnd: Utilities.formatDate(weekEnd, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      weekBaseScore: ORDER_WEEKLY_BASE_SCORE,
       statistics: result
     };
   } catch (error) {
@@ -1279,12 +1353,12 @@ function extractGradeFromClassroomName_(name) {
 }
 
 function collectWeeklyGradeScores_(weekStart, weekEnd) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+  const sheet = getOrderScoresSheet_();
   if (!sheet) {
     throw new Error('找不到評分記錄工作表');
   }
   const data = sheet.getDataRange().getValues();
+  const col = getOrderScoreColMap_(data[0]);
   const records = data.slice(1);
   const weeklyRecords = records.filter(function(row) {
     try {
@@ -1299,7 +1373,7 @@ function collectWeeklyGradeScores_(weekStart, weekEnd) {
   weeklyRecords.forEach(function(row) {
     let grade = String(row[2] || '').trim();
     const classroomName = String(row[6] || '').trim();
-    const totalScore = Number(row[12]) || 0;
+    const totalScore = Number(row[col.totalScore]) || 0;
     const recordDate = new Date(row[0]);
     if (!grade && classroomName) {
       grade = extractGradeFromClassroomName_(classroomName);
@@ -1328,6 +1402,7 @@ function collectWeeklyGradeScores_(weekStart, weekEnd) {
     else if (dayOfWeek === 6) target.saturday += totalScore;
     target.totalScore += totalScore;
   });
+  applyOrderWeeklyBaseToGradeGroups_(gradeGroups);
   return gradeGroups;
 }
 
@@ -1835,8 +1910,7 @@ function exportSheetToPdfFile_(ss, sheet, filename) {
  */
 function exportWeeklyStatisticsCsv(weekStartDate) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+    const sheet = getOrderScoresSheet_();
     
     if (!sheet) {
       return {
@@ -1852,6 +1926,7 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
         message: '沒有評分記錄'
       };
     }
+    const col = getOrderScoreColMap_(data[0]);
     
     // 計算週的開始和結束日期
     let weekStart;
@@ -1914,7 +1989,7 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       let grade = String(row[2] || '').trim();
       const classroomId = String(row[5] || '').trim();
       const classroomName = String(row[6] || '').trim();
-      const totalScore = Number(row[12]) || 0;
+      const totalScore = Number(row[col.totalScore]) || 0;
       const recordDate = new Date(row[0]);
       
       const classroomKey = classroomName;
@@ -1966,6 +2041,8 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       gradeGroups[grade][classroomKey].totalScore += totalScore;
       gradeGroups[grade][classroomKey].recordCount += 1;
     });
+
+    applyOrderWeeklyBaseToGradeGroups_(gradeGroups);
     
     // 計算排名並生成 CSV
     const grades = ['一年級', '二年級', '三年級'];
@@ -2171,8 +2248,7 @@ function debugSingleClassWeek(classroomNameFilter, weekStartDate) {
     }
     classroomNameFilter = String(classroomNameFilter).trim();
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+    const sheet = getOrderScoresSheet_();
     if (!sheet) {
       return { success: false, message: '找不到評分記錄工作表' };
     }
@@ -2181,6 +2257,7 @@ function debugSingleClassWeek(classroomNameFilter, weekStartDate) {
     if (data.length <= 1) {
       return { success: false, message: '沒有評分記錄' };
     }
+    const col = getOrderScoreColMap_(data[0]);
 
     // 計算週的開始與結束日期
     let weekStart;
@@ -2217,12 +2294,11 @@ function debugSingleClassWeek(classroomNameFilter, weekStartDate) {
         const evaluator = row[4];     // 評分人員
         const classroomId = row[5];   // 教室編號
         const classroomName = row[6]; // 教室名稱
-        const area = row[7];          // 區域
-        const timeSlot = row[8];      // 時段
-        const photoCount = row[9];    // 扣分項目數
-        const directDeduction = row[10];
-        const bonus = row[11];
-        const totalScore = Number(row[12]) || 0; // 單次總分
+        const area = row[col.area];          // 區域
+        const timeSlot = row[col.timeSlot];      // 時段
+        const photoCount = row[col.deduction];    // 扣分
+        const bonus = row[col.bonus];
+        const totalScore = Number(row[col.totalScore]) || 0; // 單次總分
 
         // 時間在本週內？
         const recordDate = new Date(time);
@@ -2249,7 +2325,6 @@ function debugSingleClassWeek(classroomNameFilter, weekStartDate) {
           area: String(area || ''),
           timeSlot: String(timeSlot || ''),
           photoCount: Number(photoCount) || 0,
-          directDeduction: Number(directDeduction) || 0,
           bonus: Number(bonus) || 0,
           totalScore: totalScore
         });
@@ -2285,8 +2360,7 @@ function debugSingleClassWeek(classroomNameFilter, weekStartDate) {
  */
 function getClassroomComparison(classroomIds, weekStartDate, grade) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+    const sheet = getOrderScoresSheet_();
     
     if (!sheet) {
       return { success: false, error: '找不到評分記錄工作表' };
@@ -2300,6 +2374,7 @@ function getClassroomComparison(classroomIds, weekStartDate, grade) {
     if (data.length <= 1) {
       return { success: false, error: '沒有評分記錄' };
     }
+    const col = getOrderScoreColMap_(data[0]);
     
     // 計算週的開始和結束日期
     let weekStart;
@@ -2360,7 +2435,7 @@ function getClassroomComparison(classroomIds, weekStartDate, grade) {
     weeklyRecords.forEach(row => {
       const classroomId = String(row[5] || '').trim();   // 教室編號在第6欄
       const classroomName = String(row[6] || '').trim(); // 教室名稱在第7欄
-      const totalScore = Number(row[12]) || 0; // 總分在第13欄（索引12）
+      const totalScore = Number(row[col.totalScore]) || 0; // 總分
       const recordDate = new Date(row[0]);
       
       if (!classroomData[classroomName]) return;
@@ -2396,6 +2471,8 @@ function getClassroomComparison(classroomIds, weekStartDate, grade) {
       classroomData[classroomName].totalScore += totalScore;
       classroomData[classroomName].recordCount += 1;
     });
+
+    applyOrderWeeklyBaseToMap_(classroomData);
     
     // 如果指定了年級，驗證教室是否屬於該年級
     if (grade && grade.trim() !== '') {
@@ -2498,6 +2575,7 @@ function getClassroomComparison(classroomIds, weekStartDate, grade) {
       wednesdayDate: Utilities.formatDate(wednesdayDate, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
       thursdayDate: Utilities.formatDate(thursdayDate, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
       fridayDate: Utilities.formatDate(fridayDate, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      weekBaseScore: ORDER_WEEKLY_BASE_SCORE,
       classrooms: result
     };
   } catch (error) {
@@ -2518,8 +2596,7 @@ function getClassroomComparison(classroomIds, weekStartDate, grade) {
  */
 function getSemesterStatistics(startDate, endDate, grade) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+    const sheet = getOrderScoresSheet_();
     
     if (!sheet) {
       return { success: false, error: '找不到評分記錄工作表' };
@@ -2533,6 +2610,7 @@ function getSemesterStatistics(startDate, endDate, grade) {
     if (data.length <= 1) {
       return { success: false, error: '沒有評分記錄' };
     }
+    const col = getOrderScoreColMap_(data[0]);
     
     // 計算日期範圍
     const semesterStart = new Date(startDate + ' 00:00:00');
@@ -2556,7 +2634,6 @@ function getSemesterStatistics(startDate, endDate, grade) {
     });
     
     // 按年級和「教室名稱」分組，計算總分
-    // row[2] = 被評年級, row[5] = 教室編號, row[6] = 教室名稱, row[12] = 總分
     const gradeGroups = {};
     
     // 從教室名稱提取年級的函數
@@ -2579,7 +2656,7 @@ function getSemesterStatistics(startDate, endDate, grade) {
       let recordGrade = String(row[2] || '').trim(); // 被評年級
       const classroomId = String(row[5] || '').trim();   // 教室編號
       const classroomName = String(row[6] || '').trim(); // 教室名稱
-      const totalScore = Number(row[12]) || 0;           // 單次總分
+      const totalScore = Number(row[col.totalScore]) || 0;           // 單次總分
       
       // 如果被評年級為空，從教室名稱推斷
       if (!recordGrade && classroomName) {

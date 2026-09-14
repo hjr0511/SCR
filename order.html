@@ -779,7 +779,7 @@
     <div id="panel-weekly" class="query-panel" role="tabpanel">
       <div class="filter-section">
         <h2 style="margin-bottom: 8px; color: #333;">每週評分統計</h2>
-        <p class="panel-desc">查該週各年級前六名（特優／優等）。</p>
+        <p class="panel-desc">週總分以 75 分為基準，再加上當週評分加減。例如當週加減合計 +25，週總分為 100。</p>
         <div class="form-group">
           <label for="weekSelect">選擇週（請選週一）</label>
           <div class="date-wrap"><input type="date" id="weekSelect"></div>
@@ -822,7 +822,7 @@
     <div id="panel-comparison" class="query-panel" role="tabpanel">
       <div class="filter-section">
         <h2 style="margin-bottom: 8px; color: #333;">班級比較</h2>
-        <p class="panel-desc">同一年級內，挑選多個班級比較該週每日分數與總分。</p>
+        <p class="panel-desc">同一年級內比較該週每日加減分；週總分同樣為 75 分基準再加上當週評分結果。</p>
         <div class="form-group">
           <label for="comparisonWeekSelect">選擇週（請選週一）</label>
           <div class="date-wrap"><input type="date" id="comparisonWeekSelect"></div>
@@ -1784,6 +1784,19 @@
       if (overlay) overlay.style.display = 'none';
     }
     
+    // 秩序週總分顯示：以 75 分為基準，高於基準為加、低於基準為減
+    function getOrderWeeklyBaseScore(result) {
+      const n = parseFloat(result && result.weekBaseScore);
+      return isNaN(n) ? 75 : n;
+    }
+    function formatOrderWeeklyTotal(score, baseScore) {
+      const base = parseFloat(baseScore);
+      const n = parseFloat(score) || 0;
+      const threshold = isNaN(base) ? 75 : base;
+      const scoreClass = n > threshold ? 'score-positive' : (n < threshold ? 'score-negative' : 'score-zero');
+      return { scoreClass: scoreClass, text: n.toFixed(1) };
+    }
+
     // 顯示班級比較結果（改為使用 Modal 顯示）
     function displayClassroomComparison(result) {
       const classrooms = result.classrooms || [];
@@ -1793,9 +1806,10 @@
         return;
       }
       
-      let html = '<p style="text-align: center; color: #666; margin-bottom: 20px; font-size: 16px; font-weight: bold;">';
+      let html = '<p style="text-align: center; color: #666; margin-bottom: 12px; font-size: 16px; font-weight: bold;">';
       html += '比較期間：' + result.weekStart + ' ~ ' + result.weekEnd;
       html += '</p>';
+      html += '<p style="text-align: center; color: #888; margin-bottom: 20px; font-size: 14px;">週總分 = 75 分基準 + 當週評分加減；週一至週末為當日加減分</p>';
       
       html += '<div style="overflow-x: auto;">';
       html += '<table class="weekly-stats-table" style="min-width: 800px;">';
@@ -1830,11 +1844,7 @@
           // 後3名：紅色（與待改進相同）
           rankClass = 'rank-warning';
         }
-        const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
-                          classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
-        // 格式化總分：正值顯示正號
-        const formattedTotalScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
-        
+        const weeklyTotal = formatOrderWeeklyTotal(classroom.totalScore, getOrderWeeklyBaseScore(result));
         html += '<tr>';
         html += '<td><span class="rank-badge ' + rankClass + '">第' + rank + '名</span></td>';
         html += '<td><strong>' + (classroom.classroomName || classroom.classroomId) + '</strong><br>(' + classroom.classroomId + ')</td>';
@@ -1844,7 +1854,7 @@
         html += '<td><span class="score-badge ' + (classroom.thursday > 0 ? 'score-positive' : classroom.thursday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.thursday.toFixed(1) + '</span></td>';
         html += '<td><span class="score-badge ' + (classroom.friday > 0 ? 'score-positive' : classroom.friday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.friday.toFixed(1) + '</span></td>';
         html += '<td><span class="score-badge ' + (classroom.weekend > 0 ? 'score-positive' : classroom.weekend < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.weekend.toFixed(1) + '</span></td>';
-        html += '<td><span class="score-badge ' + scoreClass + '" style="font-size: 16px; padding: 6px 12px;">' + formattedTotalScore + '</span></td>';
+        html += '<td><span class="score-badge ' + weeklyTotal.scoreClass + '" style="font-size: 16px; padding: 6px 12px;">' + weeklyTotal.text + '</span></td>';
         html += '<td>' + classroom.recordCount + ' 筆</td>';
         html += '</tr>';
       });
@@ -2435,10 +2445,12 @@
     function displayWeeklyStatistics(result) {
       const statistics = result.statistics || {};
       const grades = ['一年級', '二年級', '三年級'];
+      const weeklyBase = getOrderWeeklyBaseScore(result);
       
-      let html = '<p style="text-align: center; color: #666; margin-bottom: 20px; font-size: 16px; font-weight: bold;">';
+      let html = '<p style="text-align: center; color: #666; margin-bottom: 12px; font-size: 16px; font-weight: bold;">';
       html += '統計期間：' + result.weekStart + ' ~ ' + result.weekEnd;
       html += '</p>';
+      html += '<p style="text-align: center; color: #888; margin-bottom: 20px; font-size: 14px;">週總分 = 75 分基準 + 當週評分加減</p>';
       
       grades.forEach(function(grade) {
         if (!statistics[grade]) {
@@ -2463,14 +2475,11 @@
           gradeStats.top3.forEach(function(classroom) {
             // 前三名使用金色底色
             const rankClass = 'rank-1';
-            const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
-                              classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
-            // 格式化分數：正值顯示正號
-            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            const weeklyTotal = formatOrderWeeklyTotal(classroom.totalScore, weeklyBase);
             html += '<tr>';
             html += '<td><span class="rank-badge ' + rankClass + '">第' + classroom.rank + '名</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
-            html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
+            html += '<td><span class="score-badge ' + weeklyTotal.scoreClass + '">' + weeklyTotal.text + '</span></td>';
             html += '<td>' + classroom.recordCount + ' 筆</td>';
             html += '</tr>';
           });
@@ -2486,14 +2495,11 @@
           html += '<thead><tr><th>名次</th><th>教室</th><th>總分</th><th>記錄數</th></tr></thead>';
           html += '<tbody>';
           gradeStats.excellent3.forEach(function(classroom) {
-            const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
-                              classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
-            // 格式化分數：正值顯示正號
-            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            const weeklyTotal = formatOrderWeeklyTotal(classroom.totalScore, weeklyBase);
             html += '<tr>';
             html += '<td><span class="rank-badge rank-bottom">第' + classroom.rank + '名</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
-            html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
+            html += '<td><span class="score-badge ' + weeklyTotal.scoreClass + '">' + weeklyTotal.text + '</span></td>';
             html += '<td>' + classroom.recordCount + ' 筆</td>';
             html += '</tr>';
           });
@@ -2509,14 +2515,11 @@
           html += '<thead><tr><th>名次</th><th>教室</th><th>總分</th><th>記錄數</th></tr></thead>';
           html += '<tbody>';
           gradeStats.bottom3.forEach(function(classroom) {
-            const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
-                              classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
-            // 格式化分數：正值顯示正號
-            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            const weeklyTotal = formatOrderWeeklyTotal(classroom.totalScore, weeklyBase);
             html += '<tr>';
             html += '<td><span class="rank-badge rank-warning">第' + classroom.rank + '名</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
-            html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
+            html += '<td><span class="score-badge ' + weeklyTotal.scoreClass + '">' + weeklyTotal.text + '</span></td>';
             html += '<td>' + classroom.recordCount + ' 筆</td>';
             html += '</tr>';
           });
