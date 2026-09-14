@@ -840,7 +840,7 @@
     
     <div id="message" class="message"></div>
     
-    <form id="scoreForm">
+    <form id="scoreForm" novalidate>
       <!-- 隱藏欄位：從 modal 設定中取得。年級僅學生必填，不可對隱藏欄位使用 HTML required -->
       <input type="hidden" id="evaluatorGrade" name="evaluatorGrade">
       <input type="hidden" id="evaluatorType" name="evaluatorType" required>
@@ -924,7 +924,7 @@
         <p class="info-text" style="margin-top: 5px;">正數表示加分，負數表示扣分</p>
       </div>
       
-      <button type="submit" class="submit-btn" id="submitBtn">提交評分</button>
+      <button type="button" class="submit-btn" id="submitBtn">提交評分</button>
     </form>
   </div>
 
@@ -948,7 +948,7 @@
         <h2>設定評分資訊</h2>
         <span class="close" id="closeModal">&times;</span>
       </div>
-      <form id="settingsForm">
+      <form id="settingsForm" novalidate>
         <div class="form-row">
           <div class="form-group">
             <label for="modalEvaluatorGrade" id="modalEvaluatorGradeLabel">評分人員年級 <span id="gradeRequired">*</span></label>
@@ -1720,6 +1720,7 @@
       // 檔案選擇變更
       document.getElementById('fileInput').addEventListener('change', function(e) {
         handleFileSelect(e.target.files);
+        e.target.value = '';
       });
       
       // 直接扣分變更
@@ -1754,6 +1755,10 @@
       
       // 表單提交
       document.getElementById('scoreForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        submitScore();
+      });
+      document.getElementById('submitBtn').addEventListener('click', function(e) {
         e.preventDefault();
         submitScore();
       });
@@ -1935,6 +1940,24 @@
       showMessage('設定已儲存並應用到表單', 'success');
     }
     
+    function fillClassroomSelect(select, classrooms, emptyLabel) {
+      const previous = select.value;
+      if (!classrooms || classrooms.length === 0) {
+        select.innerHTML = '<option value="">' + (emptyLabel || '暫無教室資料') + '</option>';
+        return;
+      }
+      select.innerHTML = '<option value="">請選擇教室</option>';
+      classrooms.forEach(function(room) {
+        const option = document.createElement('option');
+        option.value = room.name;
+        option.textContent = room.name + ' (' + room.id + ')';
+        option.setAttribute('data-id', room.id);
+        option.setAttribute('data-order', room.order);
+        select.appendChild(option);
+      });
+      if (previous) select.value = previous;
+    }
+
     // 載入所有教室（用於老師）
     function loadAllClassrooms() {
       const select = document.getElementById('classroom');
@@ -1945,21 +1968,12 @@
       
       google.script.run
         .withSuccessHandler(function(classrooms) {
-          select.innerHTML = '<option value="">請選擇教室</option>';
           if (classrooms.length === 0) {
-            select.innerHTML = '<option value="">暫無教室資料</option>';
+            fillClassroomSelect(select, [], '暫無教室資料');
             showMessage('目前沒有教室資料，請檢查「教室清單」工作表', 'error');
           } else {
             currentClassrooms = classrooms;
-            classrooms.forEach(function(room) {
-              const option = document.createElement('option');
-              // 教室編號可能是樓層（如仁愛五樓）會重複，改以教室名稱當唯一值
-              option.value = room.name;
-              option.textContent = room.name + ' (' + room.id + ')';
-              option.setAttribute('data-id', room.id);
-              option.setAttribute('data-order', room.order);
-              select.appendChild(option);
-            });
+            fillClassroomSelect(select, classrooms);
           }
         })
         .withFailureHandler(function(error) {
@@ -1991,7 +2005,6 @@
       
       google.script.run
         .withSuccessHandler(function(classrooms) {
-          select.innerHTML = '<option value="">請選擇教室</option>';
           if (classrooms.length === 0) {
             // 根據年級評比規則顯示提示
             const gradeMapping = {
@@ -2000,7 +2013,7 @@
               '三年級': '二年級'
             };
             const evaluatedGrade = gradeMapping[grade] || '';
-            select.innerHTML = '<option value="">該年級暫無教室資料（' + grade + ' 應評比 ' + evaluatedGrade + ' 的教室）</option>';
+            fillClassroomSelect(select, [], '該年級暫無教室資料（' + grade + ' 應評比 ' + evaluatedGrade + ' 的教室）');
             showMessage('提示：' + grade + ' 應評比 ' + evaluatedGrade + ' 的教室。請確認「教室清單」的教室名稱可判斷年級（例如「資訊一忠」為一年級、「資訊二孝」為二年級）。', 'error');
           } else {
             // 顯示除錯資訊：檢查教室年級
@@ -2033,16 +2046,7 @@
             
             // 儲存當前教室清單（包含順序資訊）
             currentClassrooms = classrooms;
-            
-            classrooms.forEach(function(room) {
-              const option = document.createElement('option');
-              // 教室編號可能是樓層（如仁愛五樓）會重複，改以教室名稱當唯一值
-              option.value = room.name;
-              option.textContent = room.name + ' (' + room.id + ')';
-              option.setAttribute('data-id', room.id);
-              option.setAttribute('data-order', room.order);
-              select.appendChild(option);
-            });
+            fillClassroomSelect(select, classrooms);
           }
         })
         .withFailureHandler(function(error) {
@@ -2176,6 +2180,7 @@
           item.uploading = false;
           item.error = true;
           updatePhotoPreview();
+          updateTotalScore();
           resolve('');
         }, 40000);
         google.script.run
@@ -2187,6 +2192,7 @@
             item.uploading = false;
             item.error = !item.link;
             updatePhotoPreview();
+            updateTotalScore();
             resolve(item.link);
           })
           .withFailureHandler(function() {
@@ -2196,6 +2202,7 @@
             item.uploading = false;
             item.error = true;
             updatePhotoPreview();
+            updateTotalScore();
             resolve('');
           })
           .uploadSinglePhoto(dataUrl, filename);
@@ -2238,12 +2245,18 @@
         preview.appendChild(div);
       });
       
-      document.getElementById('photoDeduction').textContent = photos.length;
+      document.getElementById('photoDeduction').textContent = countedPhotoDeduction();
+    }
+
+    function countedPhotoDeduction() {
+      return photos.filter(function(photo) {
+        return photo && photo.link;
+      }).length;
     }
     
-    // 更新總分（與後端 saveScore 的計算方式一致）
+    // 更新總分（與後端 saveScore 的計算方式一致：只計成功上傳張數）
     function updateTotalScore() {
-      const photoDeduction = photos.length;
+      const photoDeduction = countedPhotoDeduction();
       const directDeduction = parseFloat(document.getElementById('directDeduction').value) || 0;
       const rawTotalDeduction = photoDeduction + directDeduction;
       const bonus = parseFloat(document.getElementById('bonus').value) || 0;
@@ -2295,7 +2308,13 @@
       if (!classroomName) missing.push('教室');
       if (!area) missing.push('評分區域');
       if (photos.some(function(photo) { return photo && photo.uploading; })) {
-        missing.push('尚有照片正在上傳，請稍候完成');
+        missing.push('尚有照片正在上傳，請稍候完成後再送出');
+      }
+      const failedPhotoCount = photos.filter(function(photo) {
+        return photo && !photo.uploading && !photo.link;
+      }).length;
+      if (failedPhotoCount) {
+        missing.push('有 ' + failedPhotoCount + ' 張照片上傳失敗（紅框）。請點該照片重試，或刪除後再送出');
       }
 
       if (missing.length) {
@@ -2320,7 +2339,7 @@
         classroomName: classroomName,
         area: document.getElementById('area').value,
         timeSlot: document.getElementById('timeSlot').value,
-        photoCount: photos.length,
+        photoCount: countedPhotoDeduction(),
         directDeduction: parseFloat(document.getElementById('directDeduction').value) || 0,
         bonus: parseFloat(document.getElementById('bonus').value) || 0,
         notes: document.getElementById('notes').value
@@ -2348,14 +2367,28 @@
         Promise.all(pending).then(function(links) {
           const ok = links.filter(Boolean);
           if (ok.length === 0 && photoCountBeforeUpload > 0) {
-            const confirmContinue = confirm('所有照片上傳失敗。可能是權限問題。\n\n是否仍要提交評分記錄（不含照片）？');
-            if (!confirmContinue) {
-              submitBtn.disabled = false;
-              submitBtn.textContent = '提交評分';
-              return;
-            }
+            submitBtn.disabled = false;
+            submitBtn.textContent = '提交評分';
+            showAlertModal('照片無法上傳', '所有照片都上傳失敗，評分尚未送出。請點紅框照片重試，或刪除照片後再提交。', [
+              '常見原因：網路不穩、後端尚未部署、或 Web App 權限不是「任何人」'
+            ]);
+            return;
+          }
+          if (ok.length < photoCountBeforeUpload) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '提交評分';
+            showAlertModal('部分照片無法上傳', '有照片上傳失敗，評分尚未送出。請點紅框照片重試，或刪除失敗的照片後再提交。', [
+              '成功 ' + ok.length + ' 張，失敗 ' + (photoCountBeforeUpload - ok.length) + ' 張'
+            ]);
+            return;
           }
           finishWithLinks(ok);
+        }).catch(function(err) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = '提交評分';
+          showAlertModal('照片無法上傳', '上傳過程發生錯誤，評分尚未送出。', [
+            (err && err.message) ? err.message : String(err || '未知錯誤')
+          ]);
         });
       } else {
         finishWithLinks([]);
@@ -2395,13 +2428,15 @@
             result.message = message;
             handleSubmitSuccess(result, classroomName);
           } else {
-            showMessage(result.message, 'error');
+            showAlertModal('無法提交評分', result.message || '後端拒絕儲存這筆評分。', []);
             submitBtn.disabled = false;
             submitBtn.textContent = '提交評分';
           }
         })
         .withFailureHandler(function(error) {
-          showMessage('提交失敗：' + (error.message || error.toString()), 'error');
+          showAlertModal('無法提交評分', '送出失敗，評分尚未儲存。', [
+            error.message || error.toString() || '未知錯誤'
+          ]);
           submitBtn.disabled = false;
           submitBtn.textContent = '提交評分';
         })

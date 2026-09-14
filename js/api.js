@@ -271,6 +271,18 @@
     } catch (err) {}
   }
 
+  function classroomListsEqual(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      var x = a[i] || {};
+      var y = b[i] || {};
+      if (String(x.id || '') !== String(y.id || '')) return false;
+      if (String(x.name || '') !== String(y.name || '')) return false;
+      if (String(x.grade || '') !== String(y.grade || '')) return false;
+    }
+    return true;
+  }
+
   function shouldPreloadBridge() {
     var path = String((global.location && location.pathname) || '').toLowerCase();
     return path.indexOf('score.html') >= 0;
@@ -340,7 +352,10 @@
             if (action === 'getAllClassrooms' && Array.isArray(result) && result.length) {
               writeClassroomCache(result);
             }
-            if (typeof handlers.success === 'function') handlers.success(result);
+            if (typeof handlers.success === 'function') {
+              if (cachedClassrooms && classroomListsEqual(cachedClassrooms, result)) return;
+              handlers.success(result);
+            }
           }).catch(function (err) {
             if (cachedClassrooms) return;
             if (typeof handlers.fail === 'function') handlers.fail(err);
