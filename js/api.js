@@ -13,7 +13,10 @@
     saveScore: true,
     uploadSinglePhoto: true,
     uploadPhotoChunk: true,
-    finalizePhotoUpload: true
+    finalizePhotoUpload: true,
+    exportWeeklyStatisticsCsv: true,
+    exportWeeklyStatisticsPdf: true,
+    exportWeeklyStatisticsToSheet: true
   };
 
   function getUrl() {

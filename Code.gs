@@ -1169,23 +1169,32 @@ function exportWeeklyStatisticsToSheet(weekStartDate) {
   }
 }
 
+/** 整潔績優班級 PDF 標題、附記與普通科名額規則 */
+function getWeeklyHonorPdfConfig_() {
+  return {
+    contestShort: '整潔',
+    specialKeywords: ['普通'],
+    useNote4: false,
+    notes: [
+      '一、週評比取前 6 名，若因名次重複而超過 6 個班級，則增額授獎；每日評分細項如共享雲端資料夾附件所示。',
+      '二、每週由學務處統一公佈績優班級及名次。',
+      '三、利用集會時機統一頒發獎狀，如無集會時機，則由學務主任召集受獎班級衛生股長頒發或放班級櫃。',
+      '四、普通科教室區納入評比與排名，不占名額。'
+    ]
+  };
+}
+
 /**
- * 匯出每週排名報表為 Google 文件
- * 流程：
- * 1. 取得每週統計資料（特優、優等、所有班級）
- * 2. 取得每日分數資料（週一到週六）
- * 3. 建立 Google 文件，按照 PDF 格式排版：
- *    - 第一頁：績優班級表格（高一、高二、高三並排）
- *    - 第二頁：詳細評分明細（所有班級的每日分數）
- * 4. 設定為「知道連結的人可檢視」
- * 5. 回傳文件連結
+ * 匯出每週排名報表為官方「績優班級」單頁 PDF
+ * 版面比照學務處紙本：標題在框線內、高一／高二／高三並排、
+ * 空白年級斜線、附記與承辦人／學務主任／校長簽核欄。
  *
  * @param {string} weekStartDate 週開始日期 (yyyy-MM-dd，選填，空白=本週)
  * @return {Object} { success, message, docUrl, weekStart, weekEnd }
  */
 function exportWeeklyStatisticsPdf(weekStartDate) {
   try {
-    // 取得每週統計資料
+    const config = getWeeklyHonorPdfConfig_();
     const weekly = getWeeklyStatistics(weekStartDate);
     if (!weekly || weekly.error || weekly.success === false) {
       return {
@@ -1194,519 +1203,39 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
       };
     }
 
-    // 計算週的開始和結束日期
-    let weekStart;
-    let weekEnd;
-    if (weekStartDate) {
-      weekStart = new Date(weekStartDate + ' 00:00:00');
-      weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
-    } else {
-      const today = new Date();
-      const dayOfWeek = today.getDay();
-      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      weekStart = new Date(today);
-      weekStart.setDate(today.getDate() + diff);
-      weekStart.setHours(0, 0, 0, 0);
-      weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
-    }
-
-    // 取得每日分數資料
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
-    if (!sheet) {
-      return { success: false, message: '找不到評分記錄工作表' };
-    }
-    const data = sheet.getDataRange().getValues();
-    const records = data.slice(1);
-    const weeklyRecords = records.filter(row => {
-      try {
-        const recordDate = new Date(row[0]);
-        return recordDate >= weekStart && recordDate <= weekEnd;
-      } catch (err) {
-        return false;
-      }
-    });
-
-    // 從教室名稱提取年級的函數
-    function extractGradeFromName(name) {
-      if (!name) return '';
-      const text = String(name);
-      if (text.includes('一年')) return '一年級';
-      if (text.includes('二年')) return '二年級';
-      if (text.includes('三年')) return '三年級';
-      if (text.includes('1年') || (text.match(/^1/) && !text.match(/^10/))) return '一年級';
-      if (text.includes('2年') || (text.match(/^2/) && !text.match(/^20/))) return '二年級';
-      if (text.includes('3年') || (text.match(/^3/) && !text.match(/^30/))) return '三年級';
-      const gradeMatch = text.match(/([一二三])/);
-      if (gradeMatch) {
-        const char = gradeMatch[1];
-        if (char === '一') return '一年級';
-        if (char === '二') return '二年級';
-        if (char === '三') return '三年級';
-      }
-      return '';
-    }
-
-    // 按年級和教室名稱分組，計算每日分數
-    const gradeGroups = {};
-    Logger.log('開始處理每週記錄，共 ' + weeklyRecords.length + ' 筆');
-    
-    weeklyRecords.forEach((row, index) => {
-      try {
-        let grade = String(row[2] || '').trim();
-        const classroomName = String(row[6] || '').trim();
-        const totalScore = Number(row[12]) || 0;
-        const recordDate = new Date(row[0]);
-        
-        if (!grade && classroomName) {
-          grade = extractGradeFromName(classroomName);
-        }
-        if (!grade || !classroomName) {
-          Logger.log('記錄 ' + index + ' 跳過：年級=' + grade + ', 教室名稱=' + classroomName);
-          return;
-        }
-        
-        const classroomKey = classroomName;
-        if (!gradeGroups[grade]) {
-          gradeGroups[grade] = {};
-        }
-        if (!gradeGroups[grade][classroomKey]) {
-          gradeGroups[grade][classroomKey] = {
-            classroomName: classroomName,
-            monday: 0,
-            tuesday: 0,
-            wednesday: 0,
-            thursday: 0,
-            friday: 0,
-            saturday: 0,
-            totalScore: 0
-          };
-        }
-        
-        const dayOfWeek = recordDate.getDay();
-        if (dayOfWeek === 1) {
-          gradeGroups[grade][classroomKey].monday += totalScore;
-        } else if (dayOfWeek === 2) {
-          gradeGroups[grade][classroomKey].tuesday += totalScore;
-        } else if (dayOfWeek === 3) {
-          gradeGroups[grade][classroomKey].wednesday += totalScore;
-        } else if (dayOfWeek === 4) {
-          gradeGroups[grade][classroomKey].thursday += totalScore;
-        } else if (dayOfWeek === 5) {
-          gradeGroups[grade][classroomKey].friday += totalScore;
-        } else if (dayOfWeek === 6) {
-          gradeGroups[grade][classroomKey].saturday += totalScore;
-        }
-        gradeGroups[grade][classroomKey].totalScore += totalScore;
-      } catch (err) {
-        Logger.log('處理記錄 ' + index + ' 時發生錯誤：' + err.toString());
-      }
-    });
-    
-    Logger.log('gradeGroups 處理完成，包含年級：' + Object.keys(gradeGroups).join(', '));
-
-    // 計算排名
-    const statistics = weekly.statistics || {};
+    const range = getWeekDateRange_(weekStartDate);
+    const weekStart = range.weekStart;
+    const weekEnd = range.weekEnd;
+    const gradeGroups = collectWeeklyGradeScores_(weekStart, weekEnd);
     const grades = ['一年級', '二年級', '三年級'];
-    const rankedData = {};
-    
-    Logger.log('開始計算排名，gradeGroups 包含的年級：' + Object.keys(gradeGroups).join(', '));
-    Logger.log('每週記錄數：' + weeklyRecords.length);
-    
-    grades.forEach(function(grade) {
-      if (!gradeGroups[grade] || Object.keys(gradeGroups[grade]).length === 0) {
-        Logger.log('年級 ' + grade + ' 沒有資料');
-        rankedData[grade] = { top3: [], excellent3: [], allClassrooms: [] };
-        return;
-      }
-      const classrooms = Object.values(gradeGroups[grade]);
-      Logger.log('年級 ' + grade + ' 有 ' + classrooms.length + ' 個班級');
-      classrooms.sort((a, b) => b.totalScore - a.totalScore);
-      let lastScore = null;
-      let currentRank = 0;
-      classrooms.forEach((cls, index) => {
-        if (lastScore === null || cls.totalScore !== lastScore) {
-          currentRank = index + 1;
-          lastScore = cls.totalScore;
-        }
-        cls.rank = currentRank;
-      });
-      const top3 = classrooms.filter(c => c.rank <= 3);
-      const excellentCandidates = classrooms.filter(c => c.rank >= 4);
-      const excellent3 = excellentCandidates.slice(0, 3);
-      rankedData[grade] = { top3: top3, excellent3: excellent3, allClassrooms: classrooms };
-      Logger.log('年級 ' + grade + ' 排名完成：特優 ' + top3.length + ' 個，優等 ' + excellent3.length + ' 個，總共 ' + classrooms.length + ' 個班級');
-    });
+    const rankedData = rankWeeklyGradeGroups_(gradeGroups, grades);
+    const awardLists = buildHonorAwardLists_(rankedData, grades, config);
+    const meta = getHonorWeekMeta_(weekStart);
 
-    // 計算學年度和週數
-    const year = weekStart.getFullYear();
-    const month = weekStart.getMonth() + 1;
-    const schoolYear = month >= 9 ? year - 1911 : year - 1912;
-    const semester = month >= 9 || month <= 1 ? 1 : 2;
-    const weekNum = Math.floor((weekStart - new Date(year - (month >= 9 ? 0 : 1), 8, 1)) / (7 * 24 * 60 * 60 * 1000)) + 1;
-    const formatDateRange = function(start, end) {
-      const startStr = Utilities.formatDate(start, Session.getScriptTimeZone(), 'M/d');
-      const endStr = Utilities.formatDate(end, Session.getScriptTimeZone(), 'M/d');
-      return startStr + '-' + endStr;
-    };
+    const ss = SpreadsheetApp.create('_tmp_honor_form_' + new Date().getTime());
+    const sheet = ss.getSheets()[0];
+    sheet.setName('績優班級');
+    fillHonorFormSheet_(sheet, meta, awardLists, grades, config);
+    SpreadsheetApp.flush();
 
-    // 建立 Google 文件
-    const weekLabel = weekly.weekStart.replace(/-/g, '');
-    const docName = '每週排名_' + weekLabel;
-    
-    Logger.log('開始建立 Google 文件：' + docName);
-    
-    // 檢查並刪除舊檔案
-    const files = DriveApp.getFilesByName(docName);
-    let deletedCount = 0;
-    while (files.hasNext()) {
-      files.next().setTrashed(true);
-      deletedCount++;
-    }
-    if (deletedCount > 0) {
-      Logger.log('已刪除 ' + deletedCount + ' 個同名檔案');
-    }
-    
-    // 建立新文件
-    // 注意：DocumentApp.create() 需要正確的 OAuth2 權限
-    // 如果遇到權限錯誤，請在 Apps Script 編輯器中執行一次任意函式來授權
-    let doc;
+    const pdfName = meta.schoolYear + '-' + meta.semester + '_第' + meta.weekNum + '週' + config.contestShort + '績優班級.pdf';
+    trashDriveFilesByName_(pdfName);
+
+    const pdfFile = exportSheetToPdfFile_(ss, sheet, pdfName);
+    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     try {
-      // 嘗試建立文件
-      doc = DocumentApp.create(docName);
-      Logger.log('Google 文件已建立，ID：' + doc.getId());
-    } catch (createError) {
-      const errorMsg = createError.toString();
-      Logger.log('建立 Google 文件失敗：' + errorMsg);
-      
-      // 如果是 OAuth2 權限錯誤，提供更清楚的錯誤訊息
-      if (errorMsg.includes('OAuth2') || errorMsg.includes('scope') || errorMsg.includes('permission') || 
-          errorMsg.includes('權限') || errorMsg.includes('DocumentApp.create') || 
-          errorMsg.includes('https://www.googleapis.com/auth/documents')) {
-        throw new Error('無法建立 Google 文件：權限不足。\n\n解決方法：\n1. 開啟 Google Apps Script 編輯器（https://script.google.com）\n2. 找到此專案並開啟\n3. 點擊「執行」按鈕，選擇任意函式（例如：initializeSheets）\n4. 點擊「授權」按鈕，允許以下權限：\n   - 查看、編輯、建立和刪除您的 Google 文件\n   - 查看和管理您的 Google Drive 檔案\n5. 授權完成後，重新嘗試匯出功能。\n\n如果問題持續，請聯繫 Google Workspace 管理員檢查是否限制了相關 API 權限。');
-      }
-      throw new Error('無法建立 Google 文件：' + errorMsg);
-    }
-    
-    const body = doc.getBody();
-    body.clear();
-
-    // 設定文件格式
-    body.setMarginTop(72);
-    body.setMarginBottom(72);
-    body.setMarginLeft(72);
-    body.setMarginRight(72);
-
-    // ========== 第一頁：績優班級 ==========
-    // 標題
-    const title = body.appendParagraph('中正高工生活榮譽競賽整潔評比績優班級');
-    title.setHeading(DocumentApp.ParagraphHeading.HEADING1);
-    title.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-    title.editAsText().setFontSize(18).setBold(true);
-
-    // 副標題
-    const subtitle = body.appendParagraph(schoolYear + '學年度第' + semester + '學期第' + weekNum + '週(' + formatDateRange(weekStart, weekEnd) + ')');
-    subtitle.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-    subtitle.editAsText().setFontSize(14);
-    body.appendParagraph(''); // 空行
-
-    // 建立表格：高一、高二、高三並排
-    const table = body.appendTable();
-    // 設定表格置中對齊
-    try {
-      const tableParent = table.getParent();
-      if (tableParent && tableParent.getType && tableParent.getType() === DocumentApp.ElementType.PARAGRAPH) {
-        tableParent.asParagraph().setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-      }
-    } catch (e) {
-      Logger.log('設定表格對齊時發生錯誤：' + e.toString());
-    }
-    const headerRow = table.appendTableRow();
-    headerRow.appendTableCell('高一').setBackgroundColor('#E8E8E8').setWidth(100);
-    headerRow.appendTableCell('').setWidth(80);
-    headerRow.appendTableCell('高二').setBackgroundColor('#E8E8E8').setWidth(100);
-    headerRow.appendTableCell('').setWidth(80);
-    headerRow.appendTableCell('高三').setBackgroundColor('#E8E8E8').setWidth(100);
-    headerRow.appendTableCell('').setWidth(80);
-    headerRow.getCell(0).editAsText().setBold(true);
-    headerRow.getCell(2).editAsText().setBold(true);
-    headerRow.getCell(4).editAsText().setBold(true);
-
-    const subHeaderRow = table.appendTableRow();
-    subHeaderRow.appendTableCell('名次').setBackgroundColor('#F0F0F0');
-    subHeaderRow.appendTableCell('班級').setBackgroundColor('#F0F0F0');
-    subHeaderRow.appendTableCell('名次').setBackgroundColor('#F0F0F0');
-    subHeaderRow.appendTableCell('班級').setBackgroundColor('#F0F0F0');
-    subHeaderRow.appendTableCell('名次').setBackgroundColor('#F0F0F0');
-    subHeaderRow.appendTableCell('班級').setBackgroundColor('#F0F0F0');
-
-    // 找出最大行數（確保 rankedData 存在）
-    const maxTop3 = Math.max(
-      (rankedData['一年級'] && rankedData['一年級'].top3 ? rankedData['一年級'].top3.length : 0),
-      (rankedData['二年級'] && rankedData['二年級'].top3 ? rankedData['二年級'].top3.length : 0),
-      (rankedData['三年級'] && rankedData['三年級'].top3 ? rankedData['三年級'].top3.length : 0)
-    );
-    const maxExcellent3 = Math.max(
-      (rankedData['一年級'] && rankedData['一年級'].excellent3 ? rankedData['一年級'].excellent3.length : 0),
-      (rankedData['二年級'] && rankedData['二年級'].excellent3 ? rankedData['二年級'].excellent3.length : 0),
-      (rankedData['三年級'] && rankedData['三年級'].excellent3 ? rankedData['三年級'].excellent3.length : 0)
-    );
-    
-    Logger.log('最大特優行數：' + maxTop3 + '，最大優等行數：' + maxExcellent3);
-
-    // 輸出特優
-    if (maxTop3 > 0) {
-      for (let i = 0; i < maxTop3; i++) {
-        const row = table.appendTableRow();
-        grades.forEach(function(grade) {
-          const top3 = rankedData[grade] && rankedData[grade].top3 ? rankedData[grade].top3 : [];
-          if (i < top3.length) {
-            row.appendTableCell('特優').setWidth(60);
-            row.appendTableCell(top3[i].classroomName).setWidth(80);
-          } else {
-            row.appendTableCell('').setWidth(60);
-            row.appendTableCell('').setWidth(80);
-          }
-        });
-      }
-    } else {
-      // 如果沒有特優資料，顯示提示
-      const row = table.appendTableRow();
-      row.appendTableCell('（本週無特優班級）');
-      row.appendTableCell('');
-      row.appendTableCell('（本週無特優班級）');
-      row.appendTableCell('');
-      row.appendTableCell('（本週無特優班級）');
-      row.appendTableCell('');
+      DriveApp.getFileById(ss.getId()).setTrashed(true);
+    } catch (trashErr) {
+      Logger.log('暫存試算表刪除失敗：' + trashErr.toString());
     }
 
-    // 輸出優等
-    if (maxExcellent3 > 0) {
-      for (let i = 0; i < maxExcellent3; i++) {
-        const row = table.appendTableRow();
-        grades.forEach(function(grade) {
-          const excellent3 = rankedData[grade] && rankedData[grade].excellent3 ? rankedData[grade].excellent3 : [];
-          if (i < excellent3.length) {
-            const isSpecial = excellent3[i].classroomName.includes('普通');
-            row.appendTableCell('優等' + (isSpecial ? '*' : '')).setWidth(60);
-            row.appendTableCell(excellent3[i].classroomName).setWidth(80);
-          } else {
-            row.appendTableCell('').setWidth(60);
-            row.appendTableCell('').setWidth(80);
-          }
-        });
-      }
-    }
-
-    // 將附記直接添加到上面的表格中，確保接在一起且寬度一致
-    // 使用函數來安全地設定邊框
-    function setCellBorder(cell) {
-      try {
-        // 確保單元格有內容後再設定邊框
-        if (cell.getNumChildren() > 0) {
-          cell.setBorderColor('#000000');
-          cell.setBorderWidth(1);
-        } else {
-          // 如果沒有內容，先添加一個段落
-          cell.appendParagraph(' ');
-          cell.setBorderColor('#000000');
-          cell.setBorderWidth(1);
-        }
-      } catch (e) {
-        Logger.log('設定單元格邊框時發生錯誤：' + e.toString());
-      }
-    }
-    
-    // 將附記直接添加到上面的表格中，確保接在一起且寬度一致
-    // 附記標題（使用6個欄位，第一個欄位設定寬度，其他設為0）
-    const noteTitleRow = table.appendTableRow();
-    const noteTitleCell = noteTitleRow.appendTableCell('附記');
-    noteTitleCell.editAsText().setBold(true);
-    // 設定第一個欄位寬度為總寬度
-    try {
-      noteTitleCell.setWidth(520); // 總寬度：100+80+100+80+100+80 = 520
-    } catch (e) {
-      Logger.log('設定附記標題寬度時發生錯誤：' + e.toString());
-    }
-    // 添加其他5個空欄位，寬度設為0
-    for (let i = 1; i < 6; i++) {
-      const emptyCell = noteTitleRow.appendTableCell('');
-      try {
-        emptyCell.setWidth(0);
-      } catch (e) {
-        Logger.log('設定空欄位寬度時發生錯誤：' + e.toString());
-      }
-    }
-    // 設定邊框
-    setCellBorder(noteTitleCell);
-    for (let i = 1; i < 6; i++) {
-      try {
-        setCellBorder(noteTitleRow.getCell(i));
-      } catch (e) {
-        Logger.log('設定附記標題欄位邊框時發生錯誤：' + e.toString());
-      }
-    }
-    
-    // 附記內容（四條合併在同一框線內，使用6個欄位）
-    const noteContentRow = table.appendTableRow();
-    const noteContentCell = noteContentRow.appendTableCell('一、週評比取前6名，若因名次重複而超過6個班級，則增額授獎；每日評分細項如共享雲端資料夾附件所示。');
-    // 設定第一個欄位寬度為總寬度
-    try {
-      noteContentCell.setWidth(520); // 總寬度：100+80+100+80+100+80 = 520
-    } catch (e) {
-      Logger.log('設定附記內容寬度時發生錯誤：' + e.toString());
-    }
-    // 添加其他三條內容作為段落
-    noteContentCell.appendParagraph('二、每週由學務處統一公佈績優班級及名次。');
-    noteContentCell.appendParagraph('三、利用集會時機統一頒發獎狀，如無集會時機，則由學務主任召集受獎班級衛生股長頒發或放班級櫃。');
-    noteContentCell.appendParagraph('四、普通科教室區納入評比與排名，不占名額。');
-    // 添加其他5個空欄位，寬度設為0
-    for (let i = 1; i < 6; i++) {
-      const emptyCell = noteContentRow.appendTableCell('');
-      try {
-        emptyCell.setWidth(0);
-      } catch (e) {
-        Logger.log('設定空欄位寬度時發生錯誤：' + e.toString());
-      }
-    }
-    // 設定邊框
-    setCellBorder(noteContentCell);
-    for (let i = 1; i < 6; i++) {
-      try {
-        setCellBorder(noteContentRow.getCell(i));
-      } catch (e) {
-        Logger.log('設定附記內容欄位邊框時發生錯誤：' + e.toString());
-      }
-    }
-    
-    // 簽核欄位：承辦人、學務主任、校長（同一行並排顯示，使用段落而非表格）
-    body.appendParagraph(''); // 空行
-    const signaturePara = body.appendParagraph('承辦人' + '\t\t\t\t\t\t\t\t\t\t' + '學務主任' + '\t\t\t\t\t\t\t\t\t\t' + '校長');
-    signaturePara.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-
-    // 分頁
-    body.appendPageBreak();
-
-    // ========== 第二頁：詳細評分明細 ==========
-    const detailTitle = body.appendParagraph('中正高工生活榮譽競賽整潔評比績優班級 ' + schoolYear + '學年度第' + semester + '學期第' + weekNum + '週(' + formatDateRange(weekStart, weekEnd) + ')');
-    detailTitle.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-    detailTitle.editAsText().setFontSize(14).setBold(true);
-    body.appendParagraph(''); // 空行
-
-    // 建立詳細表格
-    const detailTable = body.appendTable();
-    // 設定表格置中對齊
-    try {
-      const detailTableParent = detailTable.getParent();
-      if (detailTableParent && detailTableParent.getType && detailTableParent.getType() === DocumentApp.ElementType.PARAGRAPH) {
-        detailTableParent.asParagraph().setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-      }
-    } catch (e) {
-      Logger.log('設定詳細表格對齊時發生錯誤：' + e.toString());
-    }
-    const detailHeaderRow = detailTable.appendTableRow();
-    detailHeaderRow.appendTableCell('').setBackgroundColor('#E8E8E8');
-    detailHeaderRow.appendTableCell('星期一').setBackgroundColor('#E8E8E8');
-    detailHeaderRow.appendTableCell('星期二').setBackgroundColor('#E8E8E8');
-    detailHeaderRow.appendTableCell('星期三').setBackgroundColor('#E8E8E8');
-    detailHeaderRow.appendTableCell('星期四').setBackgroundColor('#E8E8E8');
-    detailHeaderRow.appendTableCell('星期五').setBackgroundColor('#E8E8E8');
-    detailHeaderRow.appendTableCell('星期六').setBackgroundColor('#E8E8E8');
-    detailHeaderRow.appendTableCell('總分').setBackgroundColor('#E8E8E8');
-    detailHeaderRow.appendTableCell('排名').setBackgroundColor('#E8E8E8');
-    detailHeaderRow.appendTableCell('名次').setBackgroundColor('#E8E8E8');
-    // 設置每個單元格的粗體（使用 getNumCells() 和 getCell() 方法）
-    const numCells = detailHeaderRow.getNumCells();
-    for (let i = 0; i < numCells; i++) {
-      detailHeaderRow.getCell(i).editAsText().setBold(true);
-    }
-
-    let hasAnyData = false;
-    grades.forEach(function(grade) {
-      if (!rankedData[grade] || !rankedData[grade].allClassrooms || rankedData[grade].allClassrooms.length === 0) {
-        Logger.log('年級 ' + grade + ' 沒有詳細資料可寫入');
-        return;
-      }
-      const classrooms = rankedData[grade].allClassrooms;
-      Logger.log('年級 ' + grade + ' 準備寫入 ' + classrooms.length + ' 個班級的詳細資料');
-      hasAnyData = true;
-      classrooms.forEach(function(classroom) {
-        const row = detailTable.appendTableRow();
-        const rankText = classroom.rank <= 3 ? '特優' : (classroom.rank >= 4 && classroom.rank <= 6 ? '優等' : '');
-        row.appendTableCell(classroom.classroomName || '');
-        row.appendTableCell((classroom.monday || 0).toString());
-        row.appendTableCell((classroom.tuesday || 0).toString());
-        row.appendTableCell((classroom.wednesday || 0).toString());
-        row.appendTableCell((classroom.thursday || 0).toString());
-        row.appendTableCell((classroom.friday || 0).toString());
-        row.appendTableCell((classroom.saturday || 0).toString());
-        row.appendTableCell((classroom.totalScore || 0).toString());
-        row.appendTableCell(rankText || '');
-        row.appendTableCell((classroom.rank || '').toString());
-      });
-    });
-    
-    // 如果沒有任何資料，顯示提示訊息
-    if (!hasAnyData) {
-      const row = detailTable.appendTableRow();
-      row.appendTableCell('（本週無評分記錄）');
-      row.appendTableCell('');
-      row.appendTableCell('');
-      row.appendTableCell('');
-      row.appendTableCell('');
-      row.appendTableCell('');
-      row.appendTableCell('');
-      row.appendTableCell('');
-      row.appendTableCell('');
-      row.appendTableCell('');
-      Logger.log('警告：沒有任何資料可寫入詳細表格');
-    }
-
-    // 儲存文件
-    try {
-      doc.saveAndClose();
-      Logger.log('文件已儲存並關閉');
-    } catch (saveError) {
-      Logger.log('儲存文件時發生錯誤：' + saveError.toString());
-      throw new Error('無法儲存 Google 文件：' + saveError.toString());
-    }
-
-    // 取得文件檔案並設定權限
-    let docFile;
-    let docUrl;
-    try {
-      docFile = DriveApp.getFileById(doc.getId());
-      Logger.log('已取得文件檔案，名稱：' + docFile.getName());
-      
-      // 設定權限
-      docFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-      Logger.log('已設定文件權限為「知道連結的人可檢視」');
-      
-      // 取得文件 URL
-      docUrl = docFile.getUrl();
-      Logger.log('文件 URL：' + docUrl);
-      
-      if (!docUrl || docUrl.trim() === '') {
-        throw new Error('無法取得文件 URL');
-      }
-    } catch (fileError) {
-      Logger.log('取得文件檔案或 URL 時發生錯誤：' + fileError.toString());
-      throw new Error('無法取得 Google 文件連結：' + fileError.toString());
-    }
-
-    Logger.log('Google 文件建立完成：' + docName);
-    Logger.log('文件 ID：' + doc.getId());
-    Logger.log('文件連結：' + docUrl);
-
+    const docUrl = pdfFile.getUrl();
+    Logger.log('績優班級 PDF 已建立：' + pdfName + ' ' + docUrl);
     return {
       success: true,
-      message: '已產生每週排名 Google 文件',
+      message: '已產生每週排名 PDF',
       docUrl: docUrl,
-      fileId: docFile.getId(),
+      fileId: pdfFile.getId(),
       weekStart: weekly.weekStart,
       weekEnd: weekly.weekEnd
     };
@@ -1715,10 +1244,393 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
     Logger.log('錯誤堆疊：' + (error.stack || '無堆疊資訊'));
     return {
       success: false,
-      message: '匯出每週排名 Google 文件時發生錯誤：' + error.toString()
+      message: '匯出每週排名 PDF 時發生錯誤：' + error.toString()
     };
   }
 }
+
+function getWeekDateRange_(weekStartDate) {
+  let weekStart;
+  let weekEnd;
+  if (weekStartDate) {
+    weekStart = new Date(weekStartDate + ' 00:00:00');
+    weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+  } else {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    weekStart = new Date(today);
+    weekStart.setDate(today.getDate() + diff);
+    weekStart.setHours(0, 0, 0, 0);
+    weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+  }
+  return { weekStart: weekStart, weekEnd: weekEnd };
+}
+
+function extractGradeFromClassroomName_(name) {
+  if (!name) return '';
+  const text = String(name);
+  if (text.indexOf('一年') >= 0) return '一年級';
+  if (text.indexOf('二年') >= 0) return '二年級';
+  if (text.indexOf('三年') >= 0) return '三年級';
+  if (text.indexOf('1年') >= 0 || (text.match(/^1/) && !text.match(/^10/))) return '一年級';
+  if (text.indexOf('2年') >= 0 || (text.match(/^2/) && !text.match(/^20/))) return '二年級';
+  if (text.indexOf('3年') >= 0 || (text.match(/^3/) && !text.match(/^30/))) return '三年級';
+  const gradeMatch = text.match(/([一二三])/);
+  if (gradeMatch) {
+    if (gradeMatch[1] === '一') return '一年級';
+    if (gradeMatch[1] === '二') return '二年級';
+    if (gradeMatch[1] === '三') return '三年級';
+  }
+  return '';
+}
+
+function collectWeeklyGradeScores_(weekStart, weekEnd) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+  if (!sheet) {
+    throw new Error('找不到評分記錄工作表');
+  }
+  const data = sheet.getDataRange().getValues();
+  const records = data.slice(1);
+  const weeklyRecords = records.filter(function(row) {
+    try {
+      const recordDate = new Date(row[0]);
+      return recordDate >= weekStart && recordDate <= weekEnd;
+    } catch (err) {
+      return false;
+    }
+  });
+
+  const gradeGroups = {};
+  weeklyRecords.forEach(function(row) {
+    let grade = String(row[2] || '').trim();
+    const classroomName = String(row[6] || '').trim();
+    const totalScore = Number(row[12]) || 0;
+    const recordDate = new Date(row[0]);
+    if (!grade && classroomName) {
+      grade = extractGradeFromClassroomName_(classroomName);
+    }
+    if (!grade || !classroomName) return;
+    if (!gradeGroups[grade]) gradeGroups[grade] = {};
+    if (!gradeGroups[grade][classroomName]) {
+      gradeGroups[grade][classroomName] = {
+        classroomName: classroomName,
+        monday: 0,
+        tuesday: 0,
+        wednesday: 0,
+        thursday: 0,
+        friday: 0,
+        saturday: 0,
+        totalScore: 0
+      };
+    }
+    const dayOfWeek = recordDate.getDay();
+    const target = gradeGroups[grade][classroomName];
+    if (dayOfWeek === 1) target.monday += totalScore;
+    else if (dayOfWeek === 2) target.tuesday += totalScore;
+    else if (dayOfWeek === 3) target.wednesday += totalScore;
+    else if (dayOfWeek === 4) target.thursday += totalScore;
+    else if (dayOfWeek === 5) target.friday += totalScore;
+    else if (dayOfWeek === 6) target.saturday += totalScore;
+    target.totalScore += totalScore;
+  });
+  return gradeGroups;
+}
+
+function rankWeeklyGradeGroups_(gradeGroups, grades) {
+  const rankedData = {};
+  grades.forEach(function(grade) {
+    if (!gradeGroups[grade] || Object.keys(gradeGroups[grade]).length === 0) {
+      rankedData[grade] = { top3: [], excellent3: [], allClassrooms: [] };
+      return;
+    }
+    const classrooms = Object.values(gradeGroups[grade]);
+    classrooms.sort(function(a, b) { return b.totalScore - a.totalScore; });
+    let lastScore = null;
+    let currentRank = 0;
+    classrooms.forEach(function(cls, index) {
+      if (lastScore === null || cls.totalScore !== lastScore) {
+        currentRank = index + 1;
+        lastScore = cls.totalScore;
+      }
+      cls.rank = currentRank;
+    });
+    const top3 = classrooms.filter(function(c) { return c.rank <= 3; });
+    const excellent3 = classrooms.filter(function(c) { return c.rank >= 4; }).slice(0, 3);
+    rankedData[grade] = { top3: top3, excellent3: excellent3, allClassrooms: classrooms };
+  });
+  return rankedData;
+}
+
+function isHonorSpecialClass_(name, keywords) {
+  const text = String(name || '');
+  for (let i = 0; i < keywords.length; i++) {
+    if (text.indexOf(keywords[i]) >= 0) return true;
+  }
+  return false;
+}
+
+function applyAwardRanks_(classrooms) {
+  let lastScore = null;
+  let currentRank = 0;
+  classrooms.forEach(function(cls, index) {
+    if (lastScore === null || cls.totalScore !== lastScore) {
+      currentRank = index + 1;
+      lastScore = cls.totalScore;
+    }
+    cls.awardRank = currentRank;
+  });
+}
+
+function buildHonorAwardLists_(rankedData, grades, config) {
+  const lists = {};
+  grades.forEach(function(grade) {
+    const all = (rankedData[grade] && rankedData[grade].allClassrooms) ? rankedData[grade].allClassrooms.slice() : [];
+    const regular = [];
+    const special = [];
+    all.forEach(function(cls) {
+      if (isHonorSpecialClass_(cls.classroomName, config.specialKeywords)) {
+        special.push(cls);
+      } else {
+        regular.push(cls);
+      }
+    });
+    applyAwardRanks_(regular);
+
+    const rows = [];
+    regular.filter(function(c) { return c.awardRank <= 3; }).forEach(function(c) {
+      rows.push({ label: '特優', name: c.classroomName });
+    });
+    regular.filter(function(c) { return c.awardRank >= 4 && c.awardRank <= 6; }).forEach(function(c) {
+      rows.push({ label: '優等', name: c.classroomName });
+    });
+
+    const awardees = regular.filter(function(c) { return c.awardRank <= 6; });
+    const cutoff = awardees.length ? awardees[awardees.length - 1].totalScore : null;
+    const topRegular = regular.filter(function(c) { return c.awardRank <= 3; });
+    const topCutoff = topRegular.length ? topRegular[topRegular.length - 1].totalScore : null;
+    special.forEach(function(c) {
+      if (cutoff === null || c.totalScore < cutoff) return;
+      const isTop = topCutoff !== null && c.totalScore >= topCutoff;
+      const base = isTop ? '特優' : '優等';
+      rows.push({
+        label: base + (config.useNote4 ? '註4' : ''),
+        name: c.classroomName
+      });
+    });
+    lists[grade] = rows;
+  });
+  return lists;
+}
+
+function getHonorWeekMeta_(weekStart) {
+  const tz = Session.getScriptTimeZone();
+  const year = weekStart.getFullYear();
+  const month = weekStart.getMonth() + 1;
+  const schoolYear = month >= 9 ? year - 1911 : year - 1912;
+  const semester = (month >= 9 || month <= 1) ? 1 : 2;
+  let semRef;
+  if (semester === 1) {
+    const y = month <= 1 ? year - 1 : year;
+    semRef = mondayOfWeekContaining_(y, 9, 1);
+  } else {
+    semRef = mondayOfWeekContaining_(year, 2, 16);
+  }
+  const weekNum = Math.round((weekStart.getTime() - semRef.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1;
+  const friday = new Date(weekStart);
+  friday.setDate(weekStart.getDate() + 4);
+  const dateRange = Utilities.formatDate(weekStart, tz, 'M/d') + '-' +
+    Utilities.formatDate(friday, tz, 'M/d');
+  return {
+    schoolYear: schoolYear,
+    semester: semester,
+    weekNum: Math.max(1, weekNum),
+    dateRange: dateRange
+  };
+}
+
+function mondayOfWeekContaining_(year, month1to12, day) {
+  const d = new Date(year, month1to12 - 1, day);
+  d.setHours(0, 0, 0, 0);
+  const dow = d.getDay();
+  const diff = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+function spaceCjkTitle_(text) {
+  return String(text).split('').join(' ');
+}
+
+function trashDriveFilesByName_(name) {
+  const files = DriveApp.getFilesByName(name);
+  while (files.hasNext()) {
+    files.next().setTrashed(true);
+  }
+}
+
+function setHonorRankLabel_(cell, label, fontFamily) {
+  cell.setHorizontalAlignment('center').setVerticalAlignment('middle');
+  cell.setFontFamily(fontFamily).setFontColor('#000000');
+  const noteIdx = label.indexOf('註');
+  if (noteIdx > 0) {
+    const rich = SpreadsheetApp.newRichTextValue()
+      .setText(label)
+      .setTextStyle(SpreadsheetApp.newTextStyle().setFontFamily(fontFamily).setFontSize(12).build())
+      .setTextStyle(noteIdx, label.length, SpreadsheetApp.newTextStyle().setFontFamily(fontFamily).setFontSize(8).build())
+      .build();
+    cell.setRichTextValue(rich);
+  } else {
+    cell.setFontSize(12).setValue(label);
+  }
+}
+
+function fillHonorFormSheet_(sheet, meta, awardLists, grades, config) {
+  const font = 'DFKai-SB';
+  const minDataRows = 10;
+  let maxRows = minDataRows;
+  grades.forEach(function(grade) {
+    maxRows = Math.max(maxRows, (awardLists[grade] || []).length);
+  });
+
+  const titleRow = 1;
+  const subRow = 2;
+  const gradeHeaderRow = 3;
+  const colHeaderRow = 4;
+  const dataStart = 5;
+  const dataEnd = dataStart + maxRows - 1;
+  const noteTitleRow = dataEnd + 1;
+  const noteBodyRow = dataEnd + 2;
+  const signRow = noteBodyRow + 2;
+  const lastCol = 6;
+
+  sheet.setHiddenGridlines(true);
+  [72, 128, 72, 128, 72, 128].forEach(function(w, i) {
+    sheet.setColumnWidth(i + 1, w);
+  });
+  sheet.hideColumns(7, 14);
+
+  const title = spaceCjkTitle_('中正高工生活榮譽競賽' + config.contestShort + '評比績優班級');
+  const subtitle = meta.schoolYear + ' 學年度第 ' + meta.semester + ' 學期第 ' + meta.weekNum +
+    ' 週(' + meta.dateRange + ')';
+
+  sheet.getRange(titleRow, 1, 1, lastCol).merge();
+  sheet.getRange(titleRow, 1).setValue(title)
+    .setFontFamily(font).setFontSize(18).setFontWeight('bold')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sheet.setRowHeight(titleRow, 38);
+
+  sheet.getRange(subRow, 1, 1, lastCol).merge();
+  sheet.getRange(subRow, 1).setValue(subtitle)
+    .setFontFamily(font).setFontSize(16).setFontWeight('bold')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sheet.setRowHeight(subRow, 32);
+
+  const gradeNames = ['高一', '高二', '高三'];
+  gradeNames.forEach(function(name, i) {
+    const col = i * 2 + 1;
+    sheet.getRange(gradeHeaderRow, col, 1, 2).merge();
+    sheet.getRange(gradeHeaderRow, col).setValue(name)
+      .setFontFamily(font).setFontSize(14).setFontWeight('bold')
+      .setHorizontalAlignment('center').setVerticalAlignment('middle');
+    sheet.getRange(colHeaderRow, col).setValue('名次');
+    sheet.getRange(colHeaderRow, col + 1).setValue('班級');
+  });
+  sheet.getRange(colHeaderRow, 1, 1, lastCol)
+    .setFontFamily(font).setFontSize(13).setFontWeight('bold')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sheet.setRowHeight(gradeHeaderRow, 28);
+  sheet.setRowHeight(colHeaderRow, 26);
+
+  for (let i = 0; i < maxRows; i++) {
+    const row = dataStart + i;
+    sheet.setRowHeight(row, 26);
+    grades.forEach(function(grade, gi) {
+      const rows = awardLists[grade] || [];
+      if (rows.length === 0) return;
+      const col = gi * 2 + 1;
+      if (i < rows.length) {
+        setHonorRankLabel_(sheet.getRange(row, col), rows[i].label, font);
+        sheet.getRange(row, col + 1).setValue(rows[i].name)
+          .setFontFamily(font).setFontSize(12)
+          .setHorizontalAlignment('center').setVerticalAlignment('middle');
+      }
+    });
+  }
+
+  grades.forEach(function(grade, gi) {
+    const rows = awardLists[grade] || [];
+    if (rows.length > 0) return;
+    const col = gi * 2 + 1;
+    sheet.getRange(dataStart, col, maxRows, 2).merge();
+    sheet.getRange(dataStart, col).setValue('／')
+      .setFontFamily(font).setFontSize(72)
+      .setHorizontalAlignment('center').setVerticalAlignment('middle')
+      .setFontColor('#000000');
+  });
+
+  sheet.getRange(noteTitleRow, 1, 1, lastCol).merge();
+  sheet.getRange(noteTitleRow, 1).setValue('附記')
+    .setFontFamily(font).setFontSize(13).setFontWeight('bold')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sheet.setRowHeight(noteTitleRow, 26);
+
+  sheet.getRange(noteBodyRow, 1, 1, lastCol).merge();
+  sheet.getRange(noteBodyRow, 1).setValue(config.notes.map(function(line) { return '　' + line; }).join('\n'))
+    .setFontFamily(font).setFontSize(11)
+    .setHorizontalAlignment('left').setVerticalAlignment('top')
+    .setWrap(true);
+  sheet.setRowHeight(noteBodyRow, 120);
+
+  const formLastRow = noteBodyRow;
+  const formRange = sheet.getRange(titleRow, 1, formLastRow, lastCol);
+  formRange.setBorder(true, true, true, true, true, true, '#000000', SpreadsheetApp.BorderStyle.SOLID);
+  formRange.setBorder(true, true, true, true, null, null, '#000000', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  sheet.getRange(titleRow, 1, formLastRow, lastCol)
+    .setBackground('#FFFFFF').setFontColor('#000000');
+
+  sheet.setRowHeight(noteBodyRow + 1, 18);
+  sheet.getRange(signRow, 1, 1, 2).merge();
+  sheet.getRange(signRow, 3, 1, 2).merge();
+  sheet.getRange(signRow, 5, 1, 2).merge();
+  sheet.getRange(signRow, 1).setValue('承辦人');
+  sheet.getRange(signRow, 3).setValue('學務主任');
+  sheet.getRange(signRow, 5).setValue('校長');
+  sheet.getRange(signRow, 1, 1, lastCol)
+    .setFontFamily(font).setFontSize(14)
+    .setHorizontalAlignment('center').setVerticalAlignment('middle')
+    .setBorder(false, false, false, false, false, false);
+  sheet.setRowHeight(signRow, 36);
+}
+
+function exportSheetToPdfFile_(ss, sheet, filename) {
+  const gid = sheet.getSheetId();
+  const url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() +
+    '/export?exportFormat=pdf&format=pdf&size=A4&portrait=true&fitw=true' +
+    '&sheetnames=false&printtitle=false&pagenum=UNDEFINED&gridlines=false&fzr=false' +
+    '&gid=' + gid +
+    '&top_margin=0.55&bottom_margin=0.45&left_margin=0.55&right_margin=0.55' +
+    '&horizontal_alignment=CENTER&vertical_alignment=TOP';
+  try {
+    const resp = UrlFetchApp.fetch(url, {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() === 200) {
+      return DriveApp.createFile(resp.getBlob().setName(filename));
+    }
+    Logger.log('PDF export HTTP ' + resp.getResponseCode() + '，改用 getAs');
+  } catch (err) {
+    Logger.log('UrlFetch PDF 失敗：' + err.toString() + '，改用 getAs');
+  }
+  return DriveApp.createFile(ss.getAs(MimeType.PDF).setName(filename));
+}
+
 /**
  * 匯出每週排名為 CSV 字串，給前端下載
  * 格式類似 PDF：班級名稱、星期一～星期六、總分、排名、名次（週三無評分時顯示 0）
@@ -2745,6 +2657,18 @@ function requireAuthPassword_(password) {
   throw new Error('未授權：密碼錯誤');
 }
 
+function requireAdminPassword_(password) {
+  const inputPwd = String(password || '').trim();
+  if (!inputPwd) {
+    throw new Error('未授權：請先輸入管理員密碼');
+  }
+  const adminPassword = String(getAdminPassword() || '').trim();
+  if (inputPwd === adminPassword) {
+    return true;
+  }
+  throw new Error('未授權：此功能僅限管理員');
+}
+
 function dispatchAction_(action, args, authPassword) {
   const mutatingActions = {
     saveScore: true,
@@ -2752,7 +2676,14 @@ function dispatchAction_(action, args, authPassword) {
     uploadPhotoChunk: true,
     finalizePhotoUpload: true
   };
-  if (mutatingActions[action]) {
+  const adminActions = {
+    exportWeeklyStatisticsCsv: true,
+    exportWeeklyStatisticsPdf: true,
+    exportWeeklyStatisticsToSheet: true
+  };
+  if (adminActions[action]) {
+    requireAdminPassword_(authPassword);
+  } else if (mutatingActions[action]) {
     requireAuthPassword_(authPassword);
   }
 

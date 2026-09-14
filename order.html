@@ -126,6 +126,10 @@
       margin-top: 0;
       width: auto;
     }
+
+    .btn-row .search-btn[hidden] {
+      display: none !important;
+    }
     
     .search-btn.secondary {
       background-color: #607d8b;
@@ -759,7 +763,7 @@
     <div id="panel-weekly" class="query-panel" role="tabpanel">
       <div class="filter-section">
         <h2 style="margin-bottom: 8px; color: #333;">每週評分統計</h2>
-        <p class="panel-desc">查該週各年級前六名（第1–3名、第4–6名），並可匯出排名 CSV、試算表分頁與 Google 文件。</p>
+        <p class="panel-desc">查該週各年級前六名（特優／優等）。</p>
         <div class="form-group">
           <label for="weekSelect">選擇週（請選週一）</label>
           <div class="date-wrap"><input type="date" id="weekSelect"></div>
@@ -767,8 +771,9 @@
         </div>
         <div class="btn-row">
           <button type="button" class="search-btn" id="weeklyStatsBtn">查詢週統計</button>
-          <button type="button" class="search-btn secondary" id="weeklyExportBtn">匯出每週排名 CSV</button>
-          <button type="button" class="search-btn" id="weeklyExportPdfBtn" style="background-color: #7e57c2;">匯出每週排名 PDF</button>
+          <button type="button" class="search-btn secondary" id="weeklyAdminUnlockBtn">管理員登入</button>
+          <button type="button" class="search-btn secondary" id="weeklyExportBtn" hidden>匯出每週排名 CSV</button>
+          <button type="button" class="search-btn" id="weeklyExportPdfBtn" hidden style="background-color: #7e57c2;">匯出每週排名 PDF</button>
         </div>
       </div>
     </div>
@@ -791,7 +796,7 @@
         <p id="weeklyExportInfo">已產生每週排名檔案。</p>
         <div class="export-modal-buttons">
           <button type="button" class="search-btn" id="weeklyDownloadBtn">下載 CSV</button>
-          <button type="button" class="search-btn" id="weeklyDownloadPdfBtn" style="background-color: #7e57c2;">開啟 Google 文件</button>
+          <button type="button" class="search-btn" id="weeklyDownloadPdfBtn" style="background-color: #7e57c2;">開啟 PDF</button>
           <button type="button" class="search-btn" style="background-color: #777;" id="weeklyExportCloseBtn">關閉</button>
         </div>
       </div>
@@ -903,6 +908,7 @@
       loadClassrooms();
       setupEventListeners();
       setupQueryTabs();
+      applyWeeklyAdminUi();
     };
     
     // 查詢分頁切換：一次只顯示一種查詢
@@ -1007,6 +1013,13 @@
       if (weeklyStatsBtn) {
         weeklyStatsBtn.addEventListener('click', function() {
           loadWeeklyStatistics();
+        });
+      }
+
+      const weeklyAdminUnlockBtn = document.getElementById('weeklyAdminUnlockBtn');
+      if (weeklyAdminUnlockBtn) {
+        weeklyAdminUnlockBtn.addEventListener('click', function() {
+          unlockWeeklyAdminExport();
         });
       }
       
@@ -1893,9 +1906,66 @@
     // 匯出每週排名為 CSV，並顯示下載 Modal
     let lastWeeklyCsv = null;
     let lastWeeklyPdfUrl = null;
+
+    function getStoredLoginType() {
+      try {
+        return sessionStorage.getItem((window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE') || '';
+      } catch (e) {
+        return '';
+      }
+    }
+
+    function isAdminSession() {
+      return getStoredLoginType() === 'admin';
+    }
+
+    function applyWeeklyAdminUi() {
+      const isAdmin = isAdminSession();
+      const csvBtn = document.getElementById('weeklyExportBtn');
+      const pdfBtn = document.getElementById('weeklyExportPdfBtn');
+      const unlockBtn = document.getElementById('weeklyAdminUnlockBtn');
+      if (csvBtn) csvBtn.hidden = !isAdmin;
+      if (pdfBtn) pdfBtn.hidden = !isAdmin;
+      if (unlockBtn) unlockBtn.hidden = isAdmin;
+    }
+
+    function unlockWeeklyAdminExport() {
+      const inputPassword = prompt('請輸入管理員密碼：');
+      if (inputPassword === null) return;
+      if (!String(inputPassword).trim()) {
+        showMessage('請輸入管理員密碼', 'error');
+        return;
+      }
+      const password = String(inputPassword).trim();
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!result || !result.success) {
+            showMessage((result && result.message) || '密碼錯誤，請重新輸入', 'error');
+            return;
+          }
+          if (result.loginType !== 'admin') {
+            showMessage('此功能僅限管理員，一般身份無法匯出。', 'error');
+            return;
+          }
+          try {
+            sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.AUTH_STORAGE_KEY) || 'SCHOOL_SCORE_AUTH', password);
+            sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE', 'admin');
+          } catch (e) {}
+          applyWeeklyAdminUi();
+          showMessage('管理員已登入，可匯出每週排名。', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showMessage('驗證密碼時發生錯誤：' + (error.message || error.toString()), 'error');
+        })
+        .verifyScoreSystemPassword(password);
+    }
     
     function exportWeeklyStatisticsToCsv() {
       try {
+        if (!isAdminSession()) {
+          showMessage('此功能僅限管理員，請先按「管理員登入」。', 'error');
+          return;
+        }
         const weekSelect = document.getElementById('weekSelect');
         const weekDate = weekSelect ? weekSelect.value : '';
         const weeklyExportBtn = document.getElementById('weeklyExportBtn');
@@ -1955,6 +2025,10 @@
     function exportWeeklyStatisticsToPdf() {
       console.log('exportWeeklyStatisticsToPdf 函式被呼叫');
       try {
+        if (!isAdminSession()) {
+          showMessage('此功能僅限管理員，請先按「管理員登入」。', 'error');
+          return;
+        }
         const weekSelect = document.getElementById('weekSelect');
         const weekDate = weekSelect ? weekSelect.value : '';
         const weeklyExportPdfBtn = document.getElementById('weeklyExportPdfBtn');
@@ -1983,7 +2057,7 @@
             // 檢查 docUrl 是否存在
             if (!result.docUrl) {
               console.error('docUrl 不存在，result：', result);
-              showMessage('無法取得 Google 文件連結，請檢查 Apps Script 執行記錄。', 'error');
+              showMessage('無法取得 PDF 連結，請檢查 Apps Script 執行記錄。', 'error');
               return;
             }
             
@@ -1997,7 +2071,7 @@
             }
             
             // 只顯示已產生訊息，不自動開啟 Google 文件
-            showMessage('已產生每週排名 Google 文件（' + (result.weekStart || '') + ' ~ ' + (result.weekEnd || '') + '）。', 'success');
+            showMessage('已產生每週排名 PDF（' + (result.weekStart || '') + ' ~ ' + (result.weekEnd || '') + '）。', 'success');
           })
           .withFailureHandler(function(error) {
             if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = false;
@@ -2089,9 +2163,9 @@
         // 檢查 Modal 是否顯示
         const modalVisible = modal && modal.style.display !== 'none';
         if (!modalVisible) {
-          showMessage('請先按「匯出每週排名 PDF」按鈕（紫色按鈕）產生 Google 文件，等待匯出完成後，再按「開啟 Google 文件」按鈕。', 'error');
+          showMessage('請先按「匯出每週排名 PDF」按鈕（紫色按鈕）產生檔案，等待匯出完成後，再按「開啟 PDF」按鈕。', 'error');
         } else {
-          showMessage('找不到 Google 文件連結。請重新按「匯出每週排名 PDF」按鈕產生文件。', 'error');
+          showMessage('找不到 PDF 連結。請重新按「匯出每週排名 PDF」按鈕產生檔案。', 'error');
         }
         return;
       }
@@ -2118,7 +2192,7 @@
         }
       } catch (err) {
         console.error('開啟 Google 文件時發生錯誤：', err);
-        showMessage('開啟 Google 文件時發生錯誤：' + (err.message || err.toString()) + '。正在嘗試直接開啟連結...', 'error');
+        showMessage('開啟 PDF 時發生錯誤：' + (err.message || err.toString()) + '。正在嘗試直接開啟連結...', 'error');
         // 如果 window.open 失敗，嘗試直接導向
         try {
           setTimeout(function() {
@@ -2126,7 +2200,7 @@
           }, 500);
         } catch (e) {
           console.error('無法開啟 Google 文件：', e);
-          showMessage('無法開啟 Google 文件，請手動複製連結：' + docUrl, 'error');
+          showMessage('無法開啟 PDF，請手動複製連結：' + docUrl, 'error');
         }
       }
     }
