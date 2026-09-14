@@ -857,7 +857,7 @@
     <div id="panel-semester" class="query-panel" role="tabpanel">
       <div class="filter-section">
         <h2 style="margin-bottom: 8px; color: #333;">學期總成績查詢</h2>
-        <p class="panel-desc">學期成績 = 各週總分加總 ÷ 期間週數。沒評分的週以 75 分計算（75+0）。</p>
+        <p class="panel-desc">學期成績 = 各週總分加總 ÷ 有評分的週數。該週有任何一班被評過就算一週；跳過的班當週以 75 分計。</p>
         <div class="form-row">
           <div class="form-group">
             <label for="semesterStartDate">開始日期</label>
@@ -2314,7 +2314,7 @@
       let html = '<p style="text-align: center; color: #666; margin-bottom: 12px; font-size: 16px; font-weight: bold;">';
       html += '統計期間：' + result.startDate + ' ~ ' + result.endDate;
       html += '</p>';
-      html += '<p style="text-align: center; color: #888; margin-bottom: 20px; font-size: 14px;">學期成績 = 各週總分加總 ÷ 期間週數；沒評分的週為 75 分（75+0）</p>';
+      html += '<p style="text-align: center; color: #888; margin-bottom: 20px; font-size: 14px;">學期成績 = 各週總分加總 ÷ 有評分的週數；跳過的班當週為 75 分（75+0）</p>';
       
       // 如果沒有統計資料
       if (Object.keys(statistics).length === 0) {

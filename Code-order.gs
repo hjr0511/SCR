@@ -2613,7 +2613,7 @@ function getClassroomComparison(classroomIds, weekStartDate, grade) {
 
 /**
  * 取得學期總成績統計（按年級分組，計算特優和優等）
- * 學期成績 = 各週總分加總 ÷ 期間週數；沒評分的週以 75 分計（75+0）。
+ * 學期成績 = 各週總分加總 ÷ 有評分的週數；該週無人評分則不列入，跳過的班當週以 75 分計。
  * @param {string} startDate 開始日期 (yyyy-MM-dd 格式，必填)
  * @param {string} endDate 結束日期 (yyyy-MM-dd 格式，必填)
  * @param {string} grade 年級（選填，如果指定則只返回該年級的統計）
@@ -2732,9 +2732,6 @@ function getSemesterStatistics(startDate, endDate, grade) {
       gradeGroups[recordGrade][classroomKey].recordCount += 1;
     });
 
-    const weekKeys = getOrderWeekKeysInRange_(semesterStart, semesterEnd);
-    const weekCount = weekKeys.length;
-
     try {
       getAllClassrooms().forEach(function(room) {
         const recordGrade = String(room.grade || '').trim();
@@ -2752,7 +2749,7 @@ function getSemesterStatistics(startDate, endDate, grade) {
           });
           if (!isMatch) return;
         }
-        if (!gradeGroups[recordGrade]) gradeGroups[recordGrade] = {};
+        if (!gradeGroups[recordGrade]) return;
         if (!gradeGroups[recordGrade][classroomName]) {
           gradeGroups[recordGrade][classroomName] = {
             classroomId: room.id || '',
@@ -2768,6 +2765,15 @@ function getSemesterStatistics(startDate, endDate, grade) {
     }
 
     Object.keys(gradeGroups).forEach(function(gradeKey) {
+      const weekSet = {};
+      Object.keys(gradeGroups[gradeKey]).forEach(function(classKey) {
+        const deltas = gradeGroups[gradeKey][classKey].weekDeltas || {};
+        Object.keys(deltas).forEach(function(weekKey) {
+          weekSet[weekKey] = true;
+        });
+      });
+      const weekKeys = Object.keys(weekSet);
+      const weekCount = weekKeys.length;
       Object.keys(gradeGroups[gradeKey]).forEach(function(classKey) {
         const item = gradeGroups[gradeKey][classKey];
         let sumWeekly = 0;
