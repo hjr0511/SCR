@@ -226,6 +226,30 @@ function applyOrderWeeklyBaseToGradeGroups_(gradeGroups) {
   });
 }
 
+function getOrderWeekStartKey_(value) {
+  const d = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (isNaN(d.getTime())) return '';
+  const dayOfWeek = d.getDay();
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function getOrderWeekKeysInRange_(start, end) {
+  const keys = [];
+  const firstKey = getOrderWeekStartKey_(start);
+  const lastKey = getOrderWeekStartKey_(end);
+  if (!firstKey || !lastKey) return keys;
+  const monday = new Date(firstKey + ' 00:00:00');
+  const last = new Date(lastKey + ' 00:00:00');
+  while (monday.getTime() <= last.getTime()) {
+    keys.push(Utilities.formatDate(monday, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+    monday.setDate(monday.getDate() + 7);
+  }
+  return keys;
+}
+
 /**
  * 取得所有年級清單
  * @return {Array} 年級清單
@@ -2589,6 +2613,7 @@ function getClassroomComparison(classroomIds, weekStartDate, grade) {
 
 /**
  * 取得學期總成績統計（按年級分組，計算特優和優等）
+ * 學期成績 = 各週總分加總 ÷ 期間週數；沒評分的週以 75 分計（75+0）。
  * @param {string} startDate 開始日期 (yyyy-MM-dd 格式，必填)
  * @param {string} endDate 結束日期 (yyyy-MM-dd 格式，必填)
  * @param {string} grade 年級（選填，如果指定則只返回該年級的統計）
@@ -2691,17 +2716,68 @@ function getSemesterStatistics(startDate, endDate, grade) {
       // 初始化教室（以 classroomName 為索引）
       if (!gradeGroups[recordGrade][classroomKey]) {
         gradeGroups[recordGrade][classroomKey] = {
-          classroomId: classroomId,       // 保留原始編號做參考（例如樓層）
-          classroomName: classroomName,   // 班級名稱，作為主要顯示與分組依據
+          classroomId: classroomId,
+          classroomName: classroomName,
           grade: recordGrade,
-          totalScore: 0,
+          weekDeltas: {},
           recordCount: 0
         };
       }
-      
-      // 累加總分
-      gradeGroups[recordGrade][classroomKey].totalScore += totalScore;
+
+      const weekKey = getOrderWeekStartKey_(row[0]);
+      if (weekKey) {
+        gradeGroups[recordGrade][classroomKey].weekDeltas[weekKey] =
+          (Number(gradeGroups[recordGrade][classroomKey].weekDeltas[weekKey]) || 0) + totalScore;
+      }
       gradeGroups[recordGrade][classroomKey].recordCount += 1;
+    });
+
+    const weekKeys = getOrderWeekKeysInRange_(semesterStart, semesterEnd);
+    const weekCount = weekKeys.length;
+
+    try {
+      getAllClassrooms().forEach(function(room) {
+        const recordGrade = String(room.grade || '').trim();
+        const classroomName = String(room.name || '').trim();
+        if (!recordGrade || !classroomName) return;
+        if (grade && grade.trim() !== '') {
+          const gradeVariants = {
+            '一年級': ['一年級', '1年級', '1', '一', '一級', '一年'],
+            '二年級': ['二年級', '2年級', '2', '二', '二級', '二年'],
+            '三年級': ['三年級', '3年級', '3', '三', '三級', '三年']
+          };
+          const targetVariants = gradeVariants[grade.trim()] || [grade.trim()];
+          const isMatch = targetVariants.some(function(variant) {
+            return recordGrade === variant || recordGrade.indexOf(variant) >= 0 || variant.indexOf(recordGrade) >= 0;
+          });
+          if (!isMatch) return;
+        }
+        if (!gradeGroups[recordGrade]) gradeGroups[recordGrade] = {};
+        if (!gradeGroups[recordGrade][classroomName]) {
+          gradeGroups[recordGrade][classroomName] = {
+            classroomId: room.id || '',
+            classroomName: classroomName,
+            grade: recordGrade,
+            weekDeltas: {},
+            recordCount: 0
+          };
+        }
+      });
+    } catch (seedErr) {
+      Logger.log('學期教室清單補齊失敗：' + seedErr.toString());
+    }
+
+    Object.keys(gradeGroups).forEach(function(gradeKey) {
+      Object.keys(gradeGroups[gradeKey]).forEach(function(classKey) {
+        const item = gradeGroups[gradeKey][classKey];
+        let sumWeekly = 0;
+        weekKeys.forEach(function(weekKey) {
+          sumWeekly += ORDER_WEEKLY_BASE_SCORE + (Number(item.weekDeltas[weekKey]) || 0);
+        });
+        item.scoredWeeks = weekCount;
+        item.totalScore = weekCount > 0 ? Math.round((sumWeekly / weekCount) * 10) / 10 : 0;
+        delete item.weekDeltas;
+      });
     });
     
     // 轉換為陣列並排序，找出特優和優等（處理同分名次）
@@ -2762,6 +2838,7 @@ function getSemesterStatistics(startDate, endDate, grade) {
       success: true,
       startDate: Utilities.formatDate(semesterStart, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
       endDate: Utilities.formatDate(semesterEnd, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      weekBaseScore: ORDER_WEEKLY_BASE_SCORE,
       statistics: result
     };
   } catch (error) {
