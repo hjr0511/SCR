@@ -355,6 +355,62 @@
     return sendNext();
   }
 
+  function formPost(payload, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      var id = 'f' + (++callId) + '_' + Date.now();
+      var iframe = document.createElement('iframe');
+      iframe.name = 'gasForm_' + id;
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;opacity:0;border:0;';
+      var form = document.createElement('form');
+      form.method = 'POST';
+      form.action = getUrl();
+      form.target = iframe.name;
+      function field(name, value) {
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value == null ? '' : String(value);
+        form.appendChild(input);
+      }
+      field('action', payload.action || '');
+      field('args', JSON.stringify(payload.args || []));
+      if (payload.authPassword) field('authPassword', payload.authPassword);
+      field('embed', '1');
+      field('msgId', id);
+      var settled = false;
+      var timer = setTimeout(function () {
+        finish(new Error('後端沒有回應。請把專案裡的 Code.gs 貼到 Apps Script，再部署「新版本」。'), true);
+      }, timeoutMs || 25000);
+      function finish(err, isReject) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        window.removeEventListener('message', onMsg);
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        if (form.parentNode) form.parentNode.removeChild(form);
+        if (isReject) reject(err);
+      }
+      function onMsg(e) {
+        var msg = e && e.data;
+        if (!msg || msg.type !== 'gas-form-result' || String(msg.id) !== id) return;
+        if (msg.ok) {
+          try {
+            finish(null, false);
+            resolve(unwrap(msg.result));
+          } catch (err) {
+            finish(err, true);
+          }
+        } else {
+          finish(new Error(msg.message || '後端發生錯誤'), true);
+        }
+      }
+      window.addEventListener('message', onMsg);
+      (document.body || document.documentElement).appendChild(iframe);
+      (document.body || document.documentElement).appendChild(form);
+      form.submit();
+    });
+  }
   var uploadChain = Promise.resolve();
   var photoUploadCount = 0;
 
@@ -366,7 +422,9 @@
       var pause = photoUploadCount === 0 ? Promise.resolve() : delay(400);
       photoUploadCount += 1;
       return pause.then(function () {
-        return uploadPhotoByChunks(base64, filename);
+        return formPost(buildPayload('uploadSinglePhoto', [base64, filename]), 20000).catch(function () {
+          return uploadPhotoByChunks(base64, filename);
+        });
       });
     });
     uploadChain = run.then(function () {}, function () {});

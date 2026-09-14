@@ -2731,8 +2731,21 @@ function doPost(e) {
   return handleApiRequest(e);
 }
 
-function jsonOutput_(data, callback) {
+function jsonOutput_(data, callback, embed, msgId) {
   const json = JSON.stringify(data);
+  if (embed) {
+    const isErr = !!(data && data.__exception);
+    const msg = {
+      type: 'gas-form-result',
+      id: String(msgId || ''),
+      ok: !isErr,
+      result: isErr ? null : data,
+      message: isErr ? (data.message || '後端發生錯誤') : ''
+    };
+    const html = '<!doctype html><html><body><script>try{parent.postMessage(' + JSON.stringify(msg) + ',"*");}catch(e){}</script></body></html>';
+    return HtmlService.createHtmlOutput(html)
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   if (callback) {
     const safeName = String(callback).replace(/[^A-Za-z0-9_$.]/g, '');
     return ContentService
@@ -2746,19 +2759,30 @@ function jsonOutput_(data, callback) {
 
 function handleApiRequest(e) {
   let callback = '';
+  let embed = false;
+  let msgId = '';
   try {
     let request = {};
     if (e && e.parameter && e.parameter.callback) {
       callback = e.parameter.callback;
     }
+    if (e && e.parameter) {
+      embed = String(e.parameter.embed || '') === '1';
+      msgId = String(e.parameter.msgId || '');
+    }
     if (e && e.postData && e.postData.contents) {
-      request = JSON.parse(e.postData.contents);
-    } else if (e && e.parameter) {
+      try {
+        request = JSON.parse(e.postData.contents);
+      } catch (parsePostErr) {
+        request = {};
+      }
+    }
+    if (e && e.parameter) {
       if (e.parameter.payload) {
         try {
           request = JSON.parse(e.parameter.payload);
         } catch (parsePayloadErr) {
-          request = {};
+          request = request || {};
         }
       }
       if (!request.action) {
@@ -2785,13 +2809,13 @@ function handleApiRequest(e) {
     const args = Array.isArray(request.args) ? request.args : [];
     const authPassword = request.authPassword || '';
     const result = dispatchAction_(action, args, authPassword);
-    return jsonOutput_(result, callback);
+    return jsonOutput_(result, callback, embed, msgId);
   } catch (error) {
     return jsonOutput_({
       __exception: true,
       success: false,
       message: error.message || error.toString()
-    }, callback);
+    }, callback, embed, msgId);
   }
 }
 
