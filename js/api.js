@@ -576,7 +576,6 @@
 
   function boot() {
     if (!isConfigured()) showConfigError();
-    else warmBackend();
   }
   if (document.body) boot();
   else document.addEventListener('DOMContentLoaded', boot);

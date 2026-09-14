@@ -2659,6 +2659,15 @@ function getSemesterStatistics(startDate, endDate, grade) {
  * @return {Array} 教室清單陣列
  */
 function getAllClassrooms() {
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get('all_classrooms_v1');
+  if (hit) {
+    try {
+      const parsed = JSON.parse(hit);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) {}
+  }
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAMES.CLASSROOMS);
   
@@ -2710,6 +2719,9 @@ function getAllClassrooms() {
     .filter(room => room.id && room.name)
     .sort((a, b) => a.order - b.order);
   
+  try {
+    cache.put('all_classrooms_v1', JSON.stringify(classrooms), 180);
+  } catch (e) {}
   return classrooms;
 }
 
