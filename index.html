@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232196F3'/%3E%3C/svg%3E">
   <title>中正高工生活榮譽競賽</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -111,26 +112,29 @@
         key: window.APP_CONFIG.AUTH_STORAGE_KEY || 'ORDER_SCORE_AUTH'
       });
     }
-    (window.WARM_QUEUE || []).forEach(function (item) {
-      var cb = 'warmCb' + Date.now() + '_' + Math.random().toString(36).slice(2);
-      var script = document.createElement('script');
-      window[cb] = function (data) {
-        try { delete window[cb]; } catch (err) {}
-        if (Array.isArray(data) && data.length) {
-          try {
-            localStorage.setItem(item.key + '_CLASSROOMS', JSON.stringify({ ts: Date.now(), list: data }));
-          } catch (err) {}
-        }
-        if (script.parentNode) script.parentNode.removeChild(script);
-      };
-      script.onerror = function () {
-        try { delete window[cb]; } catch (err) {}
-        if (script.parentNode) script.parentNode.removeChild(script);
-      };
-      script.src = String(item.url).replace(/\/+$/, '') +
-        '?action=getAllClassrooms&args=' + encodeURIComponent('[]') +
-        '&callback=' + encodeURIComponent(cb);
-      document.head.appendChild(script);
+    window.addEventListener('load', function () {
+      (window.WARM_QUEUE || []).forEach(function (item) {
+        var cb = 'warmCb' + Date.now() + '_' + Math.random().toString(36).slice(2);
+        var script = document.createElement('script');
+        window[cb] = function (data) {
+          try { delete window[cb]; } catch (err) {}
+          if (Array.isArray(data) && data.length) {
+            try {
+              localStorage.setItem(item.key + '_CLASSROOMS', JSON.stringify({ ts: Date.now(), list: data }));
+            } catch (err) {}
+          }
+          if (script.parentNode) script.parentNode.removeChild(script);
+        };
+        script.onerror = function () {
+          try { delete window[cb]; } catch (err) {}
+          if (script.parentNode) script.parentNode.removeChild(script);
+        };
+        script.async = true;
+        script.src = String(item.url).replace(/\/+$/, '') +
+          '?action=getAllClassrooms&args=' + encodeURIComponent('[]') +
+          '&callback=' + encodeURIComponent(cb);
+        document.head.appendChild(script);
+      });
     });
   </script>
 </body>

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Permissions-Policy" content="ambient-light-sensor=(), speaker=(), vibrate=(), vr=()">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23e67e22'/%3E%3C/svg%3E">
   <title>學校秩序評分系統</title>
   <style>
     * {
@@ -887,11 +888,12 @@
       TIME_SLOT: 'orderTimeSlot'
     };
 
-    // 一進頁就向秩序後端要教室清單並寫入快取，設定完成後下拉才不會空等
-    google.script.run
-      .withSuccessHandler(function () {})
-      .withFailureHandler(function () {})
-      .getAllClassrooms();
+    window.addEventListener('load', function () {
+      google.script.run
+        .withSuccessHandler(function () {})
+        .withFailureHandler(function () {})
+        .getAllClassrooms();
+    });
     
     // 儲存表單資料到 localStorage
     function saveFormData() {

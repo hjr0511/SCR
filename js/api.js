@@ -168,6 +168,7 @@
         'callback=' + encodeURIComponent(cb)
       ];
       if (payload.authPassword) qs.push('authPassword=' + encodeURIComponent(payload.authPassword));
+      script.async = true;
       script.src = getUrl() + '?' + qs.join('&');
       document.head.appendChild(script);
     });
