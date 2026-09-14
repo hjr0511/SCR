@@ -271,7 +271,7 @@
   var iframeWarmed = false;
 
   function uploadPhotoByChunks(base64, filename) {
-    var chunkSize = 7000;
+    var chunkSize = 3200;
     var data = String(base64 || '');
     var comma = data.indexOf(',');
     if (comma >= 0) data = data.substring(comma + 1);
@@ -280,7 +280,7 @@
     var n;
     function sendChunk(index, attempt) {
       var part = data.substr(index * chunkSize, chunkSize);
-      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, index, total, part]), 10000).catch(function (err) {
+      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, index, total, part]), 12000).catch(function (err) {
         if (attempt >= 1) throw err;
         return sendChunk(index, attempt + 1);
       });
@@ -292,40 +292,15 @@
         };
       })(n));
     }
-    return runPool(tasks, 4).then(function () {
+    return runPool(tasks, 2).then(function () {
       return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000);
     });
-  }
-
-  function pingBridge(timeoutMs) {
-    if (!iframe || !iframe.contentWindow) return Promise.resolve(false);
-    if (!iframeReady) {
-      return waitForBridge(timeoutMs || 2000, false);
-    }
-    return postCall('ping', [], timeoutMs || 2000).then(function () {
-      return true;
-    }, function () {
-      iframeReady = false;
-      return false;
-    });
-  }
-
-  function tryIframePhotoUpload(base64, filename, timeoutMs) {
-    if (!iframeReady || !iframe || !iframe.contentWindow) {
-      return Promise.reject(new Error('NO_IFRAME'));
-    }
-    return postCall('uploadSinglePhoto', [base64, filename], timeoutMs);
   }
 
   var uploadChain = Promise.resolve();
 
   function uploadSinglePhotoFast(base64, filename) {
     var run = uploadChain.then(function () {
-      if (iframeReady) {
-        return tryIframePhotoUpload(base64, filename, 22000).catch(function () {
-          return uploadPhotoByChunks(base64, filename);
-        });
-      }
       return uploadPhotoByChunks(base64, filename);
     });
     uploadChain = run.then(function () {}, function () {});
@@ -366,8 +341,7 @@
   }
 
   function shouldPreloadBridge() {
-    var path = String((global.location && location.pathname) || '').toLowerCase();
-    return path.indexOf('score.html') >= 0;
+    return false;
   }
 
   function callApi(action, args) {
