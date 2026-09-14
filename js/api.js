@@ -122,11 +122,7 @@
   }
 
   function prepareBridgeForCamera() {
-    iframeFailed = false;
-    if (!isConfigured()) return;
-    if (iframeReady) return;
-    if (hasPendingCalls()) return;
-    recreateBridge();
+    return;
   }
 
   function waitForBridge(timeoutMs, markFailed) {

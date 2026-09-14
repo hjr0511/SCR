@@ -1692,7 +1692,6 @@
       
       // 相機按鈕
       document.getElementById('cameraBtn').addEventListener('click', function() {
-        if (window.prepareSchoolApiBridge) window.prepareSchoolApiBridge();
         const fileInput = document.getElementById('fileInput');
         // 設置 capture 屬性，強制使用相機拍照
         fileInput.setAttribute('capture', 'environment'); // 使用後置相機
@@ -2134,7 +2133,6 @@
 
     // 處理檔案選擇：壓縮後立刻上傳（計時從選到檔案／拍完返回開始）
     function handleFileSelect(files) {
-      if (window.reviveSchoolApiBridge) window.reviveSchoolApiBridge();
       Array.from(files).forEach(function(file) {
         if (isLikelyImageFile(file)) {
           const startedAt = Date.now();
@@ -2227,7 +2225,6 @@
       const dataUrl = getPhotoDataUrl(item);
       if (!dataUrl) return Promise.resolve('');
       if (item.uploading && item.promise) return item.promise;
-      if (window.reviveSchoolApiBridge) window.reviveSchoolApiBridge();
       const filename = 'p' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
       item.uploading = true;
       item.error = false;
