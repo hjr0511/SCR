@@ -2136,12 +2136,12 @@
       Array.from(files).forEach(function(file) {
         if (isLikelyImageFile(file)) {
           const startedAt = Date.now();
-          compressImage(file, 480, 480, 0.55)
+          compressImage(file, 360, 360, 0.45)
             .then(function(compressedBase64) {
               addPhotoAndUpload(compressedBase64, startedAt);
             })
             .catch(function() {
-              compressImage(file, 400, 400, 0.4)
+              compressImage(file, 280, 280, 0.35)
                 .then(function(compressedBase64) {
                   addPhotoAndUpload(compressedBase64, startedAt);
                 })
@@ -2256,12 +2256,13 @@
             updateTotalScore();
             resolve(item.link);
           })
-          .withFailureHandler(function() {
+          .withFailureHandler(function(error) {
             if (settled) return;
             settled = true;
             clearTimeout(timer);
             item.uploading = false;
             item.error = true;
+            item.errorDetail = (error && error.message) ? error.message : '';
             markUploadEnd(item);
             updatePhotoPreview();
             updateTotalScore();

@@ -267,35 +267,47 @@
   var iframeWarmed = false;
 
   function uploadPhotoByChunks(base64, filename) {
-    var chunkSize = 3200;
+    var chunkSize = 1500;
     var data = String(base64 || '');
     var comma = data.indexOf(',');
     if (comma >= 0) data = data.substring(comma + 1);
     var total = Math.ceil(data.length / chunkSize) || 1;
-    var tasks = [];
-    var n;
-    function sendChunk(index, attempt) {
-      var part = data.substr(index * chunkSize, chunkSize);
-      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, index, total, part]), 12000).catch(function (err) {
+    var index = 0;
+
+    function sendChunk(chunkIndex, attempt) {
+      var part = data.substr(chunkIndex * chunkSize, chunkSize);
+      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, chunkIndex, total, part]), 15000).catch(function (err) {
         if (attempt >= 1) throw err;
-        return sendChunk(index, attempt + 1);
+        return sendChunk(chunkIndex, attempt + 1);
       });
     }
-    for (n = 0; n < total; n++) {
-      tasks.push((function (index) {
-        return function () {
-          return sendChunk(index, 0);
-        };
-      })(n));
+
+    function sendNext() {
+      if (index >= total) {
+        return delay(300).then(function () {
+          return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 30000);
+        }).catch(function () {
+          return delay(500).then(function () {
+            return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 30000);
+          });
+        });
+      }
+      var current = index;
+      index += 1;
+      return sendChunk(current, 0).then(function () {
+        return delay(40).then(sendNext);
+      });
     }
-    return runPool(tasks, 2).then(function () {
-      return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000);
-    });
+
+    return sendNext();
   }
 
   var uploadChain = Promise.resolve();
 
   function uploadSinglePhotoFast(base64, filename) {
+    if (!getAuthPassword()) {
+      return Promise.reject(new Error('未授權：請先從查詢頁輸入密碼進入評分系統'));
+    }
     var run = uploadChain.then(function () {
       return uploadPhotoByChunks(base64, filename);
     });
