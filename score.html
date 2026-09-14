@@ -112,6 +112,15 @@
         padding: 12px;
         font-size: 18px; /* 防止 iOS 自動縮放，並放大可讀性 */
       }
+
+      .num-stepper input[type="number"] {
+        font-size: 18px;
+      }
+
+      .num-stepper-btn {
+        width: 48px;
+        font-size: 16px;
+      }
       
       .photo-section {
         padding: 15px;
@@ -242,6 +251,64 @@
     
     .photo-item .remove-btn:hover {
       background: rgba(255, 0, 0, 1);
+    }
+
+    .num-stepper {
+      display: flex;
+      align-items: stretch;
+      width: 100%;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .num-stepper:focus-within {
+      border-color: #4CAF50;
+    }
+    .num-stepper input[type="number"] {
+      flex: 1;
+      width: auto;
+      margin: 0;
+      border: none;
+      border-radius: 0;
+      text-align: center;
+      padding: 12px 4px;
+      -moz-appearance: textfield;
+    }
+    .num-stepper input[type="number"]::-webkit-outer-spin-button,
+    .num-stepper input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .num-stepper-btns {
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid #ddd;
+    }
+    .num-stepper-btn {
+      width: 44px;
+      min-height: 24px;
+      flex: 1;
+      border: none;
+      background: #f5f5f5;
+      color: #333;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    }
+    .num-stepper-btn:hover {
+      background: #4CAF50;
+      color: #fff;
+    }
+    .num-stepper-btn:active {
+      background: #45a049;
+    }
+    .num-stepper-btn:disabled,
+    .num-stepper input[readonly] + .num-stepper-btns .num-stepper-btn {
+      background: #eee;
+      color: #999;
+      cursor: not-allowed;
     }
     
     .camera-btn, .file-btn {
@@ -754,13 +821,25 @@
       
       <div class="form-group">
         <label for="directDeduction">直接扣分</label>
-        <input type="number" id="directDeduction" name="directDeduction" min="0" value="0" step="0.5">
+        <div class="num-stepper">
+          <input type="number" id="directDeduction" name="directDeduction" min="0" value="0" step="0.5" inputmode="decimal">
+          <div class="num-stepper-btns">
+            <button type="button" class="num-stepper-btn" data-target="directDeduction" data-delta="0.5" aria-label="直接扣分加 0.5">▲</button>
+            <button type="button" class="num-stepper-btn" data-target="directDeduction" data-delta="-0.5" aria-label="直接扣分減 0.5">▼</button>
+          </div>
+        </div>
         <p class="info-text">可直接輸入扣分數值（不需拍照的情況，每項缺失扣1分）</p>
       </div>
       
       <div class="form-group">
         <label for="bonus">加分</label>
-        <input type="number" id="bonus" name="bonus" min="0" value="0" step="0.5">
+        <div class="num-stepper">
+          <input type="number" id="bonus" name="bonus" min="0" max="3" value="0" step="0.5" inputmode="decimal">
+          <div class="num-stepper-btns">
+            <button type="button" class="num-stepper-btn" data-target="bonus" data-delta="0.5" aria-label="加分加 0.5">▲</button>
+            <button type="button" class="num-stepper-btn" data-target="bonus" data-delta="-0.5" aria-label="加分減 0.5">▼</button>
+          </div>
+        </div>
         <p class="info-text">特殊加分項目（如協助校園清掃等，每次最多加3分）</p>
       </div>
       
@@ -860,7 +939,7 @@
           window.location.replace('clean.html');
           return '';
         }
-        return fromUrl || fromSession;
+        return fromSession || fromUrl;
       } catch (e) {
         return '';
       }
@@ -961,7 +1040,9 @@
       const gradeRequired = document.getElementById('gradeRequired');
       const hiddenGrade = document.getElementById('evaluatorGrade');
       const bonusInput = document.getElementById('bonus');
-      const bonusInfoText = document.querySelector('#bonus') ? document.querySelector('#bonus').nextElementSibling : null;
+      const bonusGroup = bonusInput ? bonusInput.closest('.form-group') : null;
+      const bonusInfoText = bonusGroup ? bonusGroup.querySelector('.info-text') : null;
+      const bonusStepperBtns = bonusGroup ? bonusGroup.querySelectorAll('.num-stepper-btn') : [];
       
       // 學生必須選年級；老師／衛生組隱藏且不必填
       const gradeNeeded = isEvaluatorGradeRequired(evaluatorType);
@@ -989,12 +1070,14 @@
           bonusInput.value = '0';
           bonusInput.setAttribute('readonly', 'readonly');
           bonusInput.style.backgroundColor = '#f5f5f5';
+          bonusStepperBtns.forEach(function(btn) { btn.disabled = true; });
           if (bonusInfoText) {
             bonusInfoText.textContent = '僅衛生組可以加分（每次最多加 3 分）';
           }
         } else {
           bonusInput.removeAttribute('readonly');
           bonusInput.style.backgroundColor = '';
+          bonusStepperBtns.forEach(function(btn) { btn.disabled = false; });
           if (bonusInfoText) {
             bonusInfoText.textContent = '特殊加分項目（如協助校園清掃等，每次最多加3分）';
           }
@@ -1572,6 +1655,24 @@
       
       // 加分變更
       document.getElementById('bonus').addEventListener('input', updateTotalScore);
+
+      document.querySelectorAll('.num-stepper-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          const targetId = btn.getAttribute('data-target');
+          const input = document.getElementById(targetId);
+          if (!input || input.readOnly || input.disabled) return;
+          const min = input.min !== '' ? parseFloat(input.min) : 0;
+          const max = input.max !== '' ? parseFloat(input.max) : null;
+          const delta = parseFloat(btn.getAttribute('data-delta'));
+          let val = parseFloat(input.value);
+          if (isNaN(val)) val = 0;
+          val += isNaN(delta) ? 0 : delta;
+          if (val < min) val = min;
+          if (max !== null && !isNaN(max) && val > max) val = max;
+          input.value = String(Math.round(val * 10) / 10);
+          updateTotalScore();
+        });
+      });
       
       // 表單提交
       document.getElementById('scoreForm').addEventListener('submit', function(e) {
@@ -2035,6 +2136,7 @@
         }
         
         const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
         removeBtn.className = 'remove-btn';
         removeBtn.textContent = '×';
         removeBtn.onclick = function() {
@@ -2134,9 +2236,10 @@
       const photoCountBeforeUpload = photosToUpload.length;
       
       function finishWithLinks(photoLinks) {
-        scoreData.photoLinks = (photoLinks || []).filter(Boolean).join('; ');
-        scoreData.photoCount = photoCountBeforeUpload;
-        submitScoreWithPhotoLinks(scoreData, photoLinks.filter(Boolean).length, photoCountBeforeUpload, classroomName);
+        const ok = (photoLinks || []).filter(Boolean);
+        scoreData.photoLinks = ok.join('; ');
+        scoreData.photoCount = ok.length;
+        submitScoreWithPhotoLinks(scoreData, ok.length, photoCountBeforeUpload, classroomName);
       }
       
       if (photosToUpload.length > 0) {

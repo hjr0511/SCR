@@ -454,8 +454,31 @@ function finalizePhotoUpload(filename) {
   return uploadSinglePhoto(parts.join(''), filename);
 }
 
-function saveScore(scoreData) {
+function isCleanEvaluatorTypeAllowed_(loginType, evaluatorType) {
+  const type = String(evaluatorType || '').trim();
+  if (!type) return false;
+  if (loginType === 'student') {
+    return type.indexOf('衛生股長') >= 0 || type.indexOf('衛生服務隊') >= 0;
+  }
+  if (loginType === 'teacher') {
+    return type.indexOf('評分教師') >= 0 || type.indexOf('巡堂老師') >= 0;
+  }
+  if (loginType === 'admin') {
+    return type.indexOf('衛生組') >= 0;
+  }
+  return false;
+}
+
+function saveScore(scoreData, authPassword) {
   try {
+    const loginType = getAuthLoginType_(authPassword);
+    if (!loginType) {
+      return { success: false, message: '未授權：請先從查詢頁輸入密碼進入評分系統' };
+    }
+    if (!isCleanEvaluatorTypeAllowed_(loginType, scoreData && scoreData.evaluatorType)) {
+      return { success: false, message: '評分人員類型與登入身分不符' };
+    }
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
     
@@ -472,19 +495,39 @@ function saveScore(scoreData) {
     const now = new Date();
     const timestamp = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
     
-    // 優化：簡化計算邏輯，減少字符串操作和重複判斷
-    const photoDeduction = scoreData.photoCount || 0;
-    const directDeduction = scoreData.directDeduction || 0;
+    let photoLinks = '';
+    if (scoreData.photoLinks) {
+      photoLinks = String(scoreData.photoLinks).trim();
+    }
+    if (!photoLinks && scoreData.photos && scoreData.photos.length > 0) {
+      const links = [];
+      const dateStr = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
+      for (let index = 0; index < scoreData.photos.length; index++) {
+        try {
+          const photoBase64 = scoreData.photos[index];
+          const filename = dateStr + '_' + scoreData.classroomId + '_' + (index + 1) + '.jpg';
+          try {
+            const link = uploadPhotoToDrive(photoBase64, filename);
+            if (link) {
+              links.push(link);
+            }
+          } catch (uploadError) {}
+        } catch (error) {}
+      }
+      photoLinks = links.join('; ');
+    }
+    const photoLinkCount = photoLinks
+      ? photoLinks.split(/[;\s]+/).map(function(link) { return link.trim(); }).filter(Boolean).length
+      : 0;
+    const photoDeduction = photoLinkCount;
+    const directDeduction = Number(scoreData.directDeduction) || 0;
     const rawTotalDeduction = photoDeduction + directDeduction;
     
-    // 根據評分人員類型給予不同權重（優化：減少字符串操作）
-    const evaluatorType = scoreData.evaluatorType || '';
     let deductionWeight = 1;
-    const isStudent = evaluatorType.indexOf('衛生股長') >= 0 || evaluatorType.indexOf('衛生服務隊') >= 0;
-    const isTeacher = evaluatorType.indexOf('評分教師') >= 0 || evaluatorType.indexOf('教師') >= 0 || evaluatorType.indexOf('老師') >= 0 || evaluatorType.indexOf('巡堂') >= 0;
-    const isHealthGroup = evaluatorType.indexOf('衛生組') >= 0;
+    const isStudent = loginType === 'student';
+    const isTeacher = loginType === 'teacher';
+    const isHealthGroup = loginType === 'admin';
     
-    // 優化：使用預先計算的布林值，避免重複 indexOf 調用
     if (isStudent || isHealthGroup) {
       deductionWeight = 0.25;
     } else if (isTeacher) {
@@ -493,11 +536,10 @@ function saveScore(scoreData) {
     
     const weightedDeduction = rawTotalDeduction * deductionWeight;
     
-    // 加分（只有衛生組可以加分）
-    const bonus = isHealthGroup ? (scoreData.bonus || 0) : 0;
+    let bonus = isHealthGroup ? (Number(scoreData.bonus) || 0) : 0;
+    if (bonus < 0) bonus = 0;
+    if (bonus > 3) bonus = 3;
     const weightedBonus = bonus * deductionWeight;
-    
-    // 總分 = 加權後加分 - 加權後扣分
     const totalScore = weightedBonus - weightedDeduction;
     
     // 取得被評年級
@@ -533,45 +575,6 @@ function saveScore(scoreData) {
         evaluatedGrade = extractGradeFromName(scoreData.classroomName);
       }
     }
-    
-    // 處理照片連結（優化：減少字符串操作）
-    let photoLinks = '';
-    
-    // 如果前端已經上傳照片並提供了連結，直接使用
-    if (scoreData.photoLinks) {
-      photoLinks = scoreData.photoLinks.trim();
-    } else if (scoreData.photos && scoreData.photos.length > 0) {
-      // 後備方案：如果前端傳來了 photos 陣列（base64），則上傳
-      const links = [];
-      const dateStr = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
-      
-      for (let index = 0; index < scoreData.photos.length; index++) {
-        try {
-          const photoBase64 = scoreData.photos[index];
-          const filename = dateStr + '_' + scoreData.classroomId + '_' + (index + 1) + '.jpg';
-          
-          try {
-            const link = uploadPhotoToDrive(photoBase64, filename);
-            if (link) {
-              links.push(link);
-            }
-          } catch (uploadError) {
-            // 繼續處理下一張照片，不中斷整個流程
-          }
-        } catch (error) {
-          // 繼續處理下一張照片，不中斷整個流程
-        }
-      }
-      
-      photoLinks = links.join('; '); // 多張照片用分號分隔
-      // 優化：減少日誌記錄以提升速度（僅在必要時記錄）
-      // Logger.log('最終照片連結：' + photoLinks);
-      // Logger.log('成功上傳 ' + links.length + ' 張照片，共 ' + scoreData.photos.length + ' 張');
-    }
-    // 優化：減少日誌記錄
-    // else {
-    //   Logger.log('沒有照片連結或照片資料');
-    // }
     
     // 準備新列資料
     const newRow = [
@@ -2792,16 +2795,23 @@ function handleApiRequest(e) {
   }
 }
 
-function requireAuthPassword_(password) {
+function getAuthLoginType_(password) {
   const inputPwd = String(password || '').trim();
-  if (!inputPwd) {
-    throw new Error('未授權：請先從查詢頁輸入密碼進入評分系統');
-  }
+  if (!inputPwd) return '';
   const teacherPassword = String(getScoreSystemPassword() || '').trim();
   const studentPassword = String(getStudentPassword() || '').trim();
   const adminPassword = String(getAdminPassword() || '').trim();
-  if (inputPwd === teacherPassword || inputPwd === studentPassword || inputPwd === adminPassword) {
-    return true;
+  if (inputPwd === teacherPassword) return 'teacher';
+  if (inputPwd === studentPassword) return 'student';
+  if (inputPwd === adminPassword) return 'admin';
+  return '';
+}
+
+function requireAuthPassword_(password) {
+  if (getAuthLoginType_(password)) return true;
+  const inputPwd = String(password || '').trim();
+  if (!inputPwd) {
+    throw new Error('未授權：請先從查詢頁輸入密碼進入評分系統');
   }
   throw new Error('未授權：密碼錯誤');
 }
@@ -2856,7 +2866,7 @@ function dispatchAction_(action, args, authPassword) {
     case 'finalizePhotoUpload':
       return finalizePhotoUpload(args[0]);
     case 'saveScore':
-      return saveScore(args[0]);
+      return saveScore(args[0], authPassword);
     case 'getScoreRecords':
       return getScoreRecords(args[0] || '', args[1] || '', args[2] || '');
     case 'verifyScoreSystemPassword':

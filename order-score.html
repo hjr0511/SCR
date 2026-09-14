@@ -975,7 +975,7 @@
           window.location.replace('order.html');
           return '';
         }
-        return fromUrl || fromSession;
+        return fromSession || fromUrl;
       } catch (e) {
         return '';
       }
@@ -1902,56 +1902,29 @@
         return;
       }
       
-      // 根據年級評比規則顯示提示
-      const gradeMapping = {
-        '一年級': '三年級',
-        '二年級': '一年級',
-        '三年級': '二年級'
-      };
-      const evaluatedGrade = gradeMapping[grade] || '';
-      gradeInfo.textContent = grade + ' 評比 ' + evaluatedGrade;
+      gradeInfo.textContent = '學生評比本年級（' + grade + '）班級';
       gradeInfo.style.display = 'block';
       
       google.script.run
         .withSuccessHandler(function(classrooms) {
           select.innerHTML = '<option value="">請選擇教室</option>';
           if (classrooms.length === 0) {
-            // 根據年級評比規則顯示提示
-            const gradeMapping = {
-              '一年級': '三年級',
-              '二年級': '一年級',
-              '三年級': '二年級'
-            };
-            const evaluatedGrade = gradeMapping[grade] || '';
-            select.innerHTML = '<option value="">該年級暫無教室資料（' + grade + ' 應評比 ' + evaluatedGrade + ' 的教室）</option>';
-            showMessage('提示：' + grade + ' 應評比 ' + evaluatedGrade + ' 的教室。請確認「教室清單」的教室名稱可判斷年級（例如「資訊一忠」為一年級、「資訊二孝」為二年級）。', 'error');
+            select.innerHTML = '<option value="">該年級暫無教室資料（' + grade + '）</option>';
+            showMessage('提示：秩序評分只顯示本年級教室。請確認「教室清單」的教室名稱可判斷年級（例如「資訊一忠」為一年級、「資訊二孝」為二年級）。', 'error');
           } else {
-            // 顯示除錯資訊：檢查教室年級
-            const gradeMapping = {
-              '一年級': '三年級',
-              '二年級': '一年級',
-              '三年級': '二年級'
-            };
-            const expectedGrade = gradeMapping[grade] || '';
             const actualGrades = [...new Set(classrooms.map(r => r.grade))];
-            
-            // 建立年級格式對照表（用於檢查年級是否匹配）
             const gradeEquivalenceMap = {
               '一年級': ['一年級', '1年級', '1'],
               '二年級': ['二年級', '2年級', '2'],
               '三年級': ['三年級', '3年級', '3']
             };
-            const expectedGradeVariants = gradeEquivalenceMap[expectedGrade] || [expectedGrade];
-            
-            // 檢查實際顯示的年級是否與預期匹配（支援多種格式）
-            const isGradeMatched = actualGrades.some(actualGrade => 
-              expectedGradeVariants.includes(actualGrade.trim())
+            const expectedGradeVariants = gradeEquivalenceMap[grade] || [grade];
+            const isGradeMatched = actualGrades.some(actualGrade =>
+              expectedGradeVariants.includes(String(actualGrade || '').trim())
             );
-            
-            // 如果顯示的年級與預期不符，顯示警告
-            if (expectedGrade && actualGrades.length > 0 && !isGradeMatched) {
-              console.warn('警告：預期顯示 ' + expectedGrade + ' 的教室，但實際顯示：' + actualGrades.join('、'));
-              showMessage('警告：預期顯示 ' + expectedGrade + ' 的教室，但實際顯示 ' + actualGrades.join('、') + ' 的教室。請檢查「教室清單」工作表中的年級欄位是否正確。', 'error');
+            if (grade && actualGrades.length > 0 && !isGradeMatched) {
+              console.warn('警告：預期顯示 ' + grade + ' 的教室，但實際顯示：' + actualGrades.join('、'));
+              showMessage('警告：預期顯示 ' + grade + ' 的教室，但實際顯示 ' + actualGrades.join('、') + ' 的教室。請檢查「教室清單」工作表中的年級欄位是否正確。', 'error');
             }
             
             // 儲存當前教室清單（包含順序資訊）

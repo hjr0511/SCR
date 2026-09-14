@@ -600,8 +600,31 @@ function findOwnOrderScoreRow_(sheet, scoreData, category) {
   return 0;
 }
 
-function saveScore(scoreData) {
+function isOrderEvaluatorTypeAllowed_(loginType, evaluatorType) {
+  const type = String(evaluatorType || '').trim();
+  if (!type) return false;
+  if (loginType === 'student') {
+    return type.indexOf('風紀股長') >= 0;
+  }
+  if (loginType === 'teacher') {
+    return type.indexOf('師長') >= 0 || type.indexOf('巡堂') >= 0 || type.indexOf('校安') >= 0;
+  }
+  if (loginType === 'admin') {
+    return type.indexOf('生輔組') >= 0 || type.indexOf('校長') >= 0;
+  }
+  return false;
+}
+
+function saveScore(scoreData, authPassword) {
   try {
+    const loginType = getAuthLoginType_(authPassword);
+    if (!loginType) {
+      return { success: false, message: '未授權：請先從查詢頁輸入密碼進入評分系統' };
+    }
+    if (!isOrderEvaluatorTypeAllowed_(loginType, scoreData && scoreData.evaluatorType)) {
+      return { success: false, message: '評分人員類型與登入身分不符' };
+    }
+
     const sheet = getOrderScoresSheet_();
     
     const now = new Date();
@@ -647,7 +670,7 @@ function saveScore(scoreData) {
         deduction += noiseCount;
         parts.push('F吵鬧交談' + noiseCount);
       }
-      const otherDeduction = Number(items.G) || 0;
+      const otherDeduction = Math.min(3, Math.max(0, Number(items.G) || 0));
       if (otherDeduction > 0) {
         deduction += otherDeduction;
         parts.push('G其他行為-' + otherDeduction);
@@ -2997,16 +3020,23 @@ function handleApiRequest(e) {
   }
 }
 
-function requireAuthPassword_(password) {
+function getAuthLoginType_(password) {
   const inputPwd = String(password || '').trim();
-  if (!inputPwd) {
-    throw new Error('未授權：請先從查詢頁輸入密碼進入評分系統');
-  }
+  if (!inputPwd) return '';
   const teacherPassword = String(getScoreSystemPassword() || '').trim();
   const studentPassword = String(getStudentPassword() || '').trim();
   const adminPassword = String(getAdminPassword() || '').trim();
-  if (inputPwd === teacherPassword || inputPwd === studentPassword || inputPwd === adminPassword) {
-    return true;
+  if (inputPwd === teacherPassword) return 'teacher';
+  if (inputPwd === studentPassword) return 'student';
+  if (inputPwd === adminPassword) return 'admin';
+  return '';
+}
+
+function requireAuthPassword_(password) {
+  if (getAuthLoginType_(password)) return true;
+  const inputPwd = String(password || '').trim();
+  if (!inputPwd) {
+    throw new Error('未授權：請先從查詢頁輸入密碼進入評分系統');
   }
   throw new Error('未授權：密碼錯誤');
 }
@@ -3063,7 +3093,7 @@ function dispatchAction_(action, args, authPassword) {
     case 'finalizePhotoUpload':
       return finalizePhotoUpload(args[0]);
     case 'saveScore':
-      return saveScore(args[0]);
+      return saveScore(args[0], authPassword);
     case 'getScoreRecords':
       return getScoreRecords(args[0] || '', args[1] || '', args[2] || '');
     case 'verifyScoreSystemPassword':
