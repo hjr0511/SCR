@@ -2053,7 +2053,7 @@
         .getClassrooms(grade);
     }
     
-    // 壓縮圖片（縮小後拍完立刻上傳，速度與秩序相同）
+    // 壓縮圖片（約 480px，能看清缺失，仍比原圖小很多）
     function compressImage(file, maxWidth, maxHeight, quality) {
       function drawToJpeg(source, srcW, srcH) {
         let width = srcW;
@@ -2138,12 +2138,12 @@
       Array.from(files).forEach(function(file) {
         if (isLikelyImageFile(file)) {
           const startedAt = Date.now();
-          compressImage(file, 240, 240, 0.22)
+          compressImage(file, 480, 480, 0.55)
             .then(function(compressedBase64) {
               addPhotoAndUpload(compressedBase64, startedAt);
             })
             .catch(function() {
-              compressImage(file, 200, 200, 0.18)
+              compressImage(file, 400, 400, 0.4)
                 .then(function(compressedBase64) {
                   addPhotoAndUpload(compressedBase64, startedAt);
                 })
