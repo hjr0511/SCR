@@ -124,10 +124,8 @@
   function prepareBridgeForCamera() {
     iframeFailed = false;
     if (!isConfigured()) return;
-    if (hasPendingCalls()) {
-      iframeReady = false;
-      return;
-    }
+    if (iframeReady) return;
+    if (hasPendingCalls()) return;
     recreateBridge();
   }
 
@@ -312,37 +310,23 @@
     });
   }
 
-  function scheduleBridgeRefresh() {
-    setTimeout(function () {
-      if (hasPendingCalls()) return;
-      recreateBridge();
-    }, 400);
-  }
-
   function tryIframePhotoUpload(base64, filename, timeoutMs) {
-    ensureIframe();
-    var ready = iframeReady ? Promise.resolve(true) : waitForBridge(8000, false);
-    return ready.then(function (ok) {
-      if (!ok || !iframe || !iframe.contentWindow) {
-        throw new Error('NO_IFRAME');
-      }
-      return postCall('uploadSinglePhoto', [base64, filename], timeoutMs);
-    });
+    if (!iframeReady || !iframe || !iframe.contentWindow) {
+      return Promise.reject(new Error('NO_IFRAME'));
+    }
+    return postCall('uploadSinglePhoto', [base64, filename], timeoutMs);
   }
 
   var uploadChain = Promise.resolve();
 
   function uploadSinglePhotoFast(base64, filename) {
     var run = uploadChain.then(function () {
-      return tryIframePhotoUpload(base64, filename, 35000).catch(function () {
-        return uploadPhotoByChunks(base64, filename);
-      }).then(function (link) {
-        scheduleBridgeRefresh();
-        return link;
-      }, function (err) {
-        scheduleBridgeRefresh();
-        throw err;
-      });
+      if (iframeReady) {
+        return tryIframePhotoUpload(base64, filename, 22000).catch(function () {
+          return uploadPhotoByChunks(base64, filename);
+        });
+      }
+      return uploadPhotoByChunks(base64, filename);
     });
     uploadChain = run.then(function () {}, function () {});
     return run;
@@ -470,10 +454,7 @@
   global.prepareSchoolApiBridge = prepareBridgeForCamera;
 
   function onPageHidden() {
-    iframeReady = false;
     iframeFailed = false;
-    if (hasPendingCalls()) return;
-    if (isConfigured()) recreateBridge();
   }
 
   function onPageVisible() {

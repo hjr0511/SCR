@@ -2184,7 +2184,10 @@
     }
 
     function startPhotoTimeTicker() {
-      if (window._photoTimeTicker) return;
+      if (window._photoTimeTicker) {
+        clearInterval(window._photoTimeTicker);
+        window._photoTimeTicker = null;
+      }
       window._photoTimeTicker = setInterval(function() {
         let uploading = false;
         photos.forEach(function(photo, index) {
@@ -2192,6 +2195,11 @@
           const el = document.querySelector('.photo-status[data-idx="' + index + '"]');
           if (el && photo) el.textContent = photoStatusText(photo);
         });
+        const line = document.getElementById('photoUploadTime');
+        if (line && uploading) {
+          const current = photos.filter(function(photo) { return photo && photo.uploading; }).pop();
+          if (current) line.textContent = '上傳中 ' + formatUploadTime(Date.now() - current.uploadStartedAt);
+        }
         if (!uploading) {
           clearInterval(window._photoTimeTicker);
           window._photoTimeTicker = null;
