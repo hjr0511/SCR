@@ -41,7 +41,7 @@
       margin-bottom: 20px;
     }
     
-    label {
+    label, .section-label {
       display: block;
       margin-bottom: 8px;
       color: #555;
@@ -103,7 +103,7 @@
         margin-bottom: 15px;
       }
       
-      label {
+      label, .section-label {
         font-size: 17px;
         margin-bottom: 6px;
       }
@@ -865,11 +865,11 @@
       </div>
       
       <div class="photo-section">
-        <label>拍照扣分</label>
+        <p class="section-label">拍照扣分</p>
         <p class="info-text">拍照當下就會開始上傳。每張照片扣 1 分，拍完可立刻提交、走到下一班。</p>
         <button type="button" class="camera-btn" id="cameraBtn">📷 開啟相機拍照</button>
         <button type="button" class="file-btn" id="fileBtn">📁 選擇照片檔案</button>
-        <input type="file" id="fileInput" accept="image/*" multiple>
+        <input type="file" id="fileInput" accept="image/*" multiple aria-label="選擇照片檔案">
         
         <div class="photo-preview" id="photoPreview"></div>
         <p class="info-text" id="photoUploadTime"></p>

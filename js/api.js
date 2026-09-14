@@ -341,7 +341,7 @@
   }
 
   function apiTimeoutFor(action) {
-    if (action === 'verifyScoreSystemPassword' || action === 'ping') return 20000;
+    if (action === 'verifyScoreSystemPassword' || action === 'ping') return 12000;
     if (action === 'getAllClassrooms' || action === 'getScoreRecords') return 90000;
     if (action === 'uploadPhotoChunk') return 20000;
     if (action === 'finalizePhotoUpload' || action === 'uploadSinglePhoto') return 40000;
@@ -350,8 +350,33 @@
 
   function apiRequest(payload, timeoutMs) {
     var waitMs = timeoutMs || apiTimeoutFor(payload && payload.action);
-    return fetchGasGet(payload, waitMs).catch(function () {
-      return jsonpGetRetry(payload, waitMs, 1);
+    var action = payload && payload.action;
+    var hedgeMs = (action === 'ping' || action === 'verifyScoreSystemPassword') ? 2000 : 0;
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var hedgeTimer = null;
+      function ok(value) {
+        if (settled) return;
+        settled = true;
+        if (hedgeTimer) clearTimeout(hedgeTimer);
+        resolve(value);
+      }
+      function fail(err) {
+        if (settled) return;
+        settled = true;
+        if (hedgeTimer) clearTimeout(hedgeTimer);
+        reject(err);
+      }
+      fetchGasGet(payload, Math.min(8000, waitMs)).then(ok, function () {
+        if (settled) return;
+        jsonpGetRetry(payload, waitMs, 1).then(ok, fail);
+      });
+      if (hedgeMs) {
+        hedgeTimer = setTimeout(function () {
+          if (settled) return;
+          jsonpGet(payload, waitMs).then(ok, function () {});
+        }, hedgeMs);
+      }
     });
   }
 

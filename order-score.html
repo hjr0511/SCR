@@ -41,7 +41,7 @@
       margin-bottom: 20px;
     }
     
-    label {
+    label, .section-label {
       display: block;
       margin-bottom: 8px;
       color: #555;
@@ -103,7 +103,7 @@
         margin-bottom: 15px;
       }
       
-      label {
+      label, .section-label {
         font-size: 17px;
         margin-bottom: 6px;
       }
@@ -881,7 +881,7 @@
       <input type="hidden" id="area" name="area" value="教室">
       
       <div id="napSection" class="photo-section">
-        <label>午休評分（12:40–13:10）</label>
+        <p class="section-label">午休評分（12:40–13:10）</p>
         <p class="info-text">加分項 A／B 擇一；扣分項可複選。評分原則：關燈、不走動、不交談、不群聚。</p>
         <label class="check-row"><input type="radio" name="napBonus" id="itemA" value="A"> A 全班午睡　加 5 分</label>
         <label class="check-row"><input type="radio" name="napBonus" id="itemB" value="B"> B 安靜休息　加 3 分</label>
@@ -943,11 +943,11 @@
       </div>
 
       <div class="photo-section" id="evidencePhotoSection">
-        <label>附上照片</label>
+        <p class="section-label">附上照片</p>
         <p class="info-text">拍照當下就會開始上傳，作為佐證，不另外扣分。集會、巡堂、其他尤其建議拍照。</p>
         <button type="button" class="camera-btn" id="cameraBtn">📷 開啟相機拍照</button>
         <button type="button" class="file-btn" id="fileBtn">📁 選擇照片檔案</button>
-        <input type="file" id="fileInput" accept="image/*" multiple>
+        <input type="file" id="fileInput" accept="image/*" multiple aria-label="選擇照片檔案">
         <div class="photo-preview" id="photoPreview"></div>
         <p class="info-text">已附照片：<span id="photoCount">0</span> 張　<span id="photoUploadTime"></span></p>
       </div>
