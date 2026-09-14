@@ -361,6 +361,9 @@
     if (action === 'uploadSinglePhoto') {
       return uploadSinglePhotoFast(args[0], args[1]);
     }
+    if (action === 'verifyScoreSystemPassword' || action === 'ping') {
+      return jsonpGetRetry(buildPayload(action, args), 20000, 1);
+    }
     if (action === 'getAllClassrooms' || action === 'getScoreRecords') {
       return jsonpGetRetry(buildPayload(action, args), 90000, 1);
     }
@@ -435,6 +438,19 @@
   global.reviveSchoolApiBridge = reviveBridge;
   global.prepareSchoolApiBridge = prepareBridgeForCamera;
 
+  var warmPromise = null;
+  function warmBackend() {
+    if (!isConfigured()) return Promise.resolve(false);
+    if (warmPromise) return warmPromise;
+    warmPromise = jsonpGet(buildPayload('ping', []), 20000).then(function () {
+      return true;
+    }).catch(function () {
+      return false;
+    });
+    return warmPromise;
+  }
+  global.warmSchoolApi = warmBackend;
+
   function onPageHidden() {
     iframeFailed = false;
   }
@@ -451,7 +467,7 @@
 
   function boot() {
     if (!isConfigured()) showConfigError();
-    else if (shouldPreloadBridge()) ensureIframe();
+    else warmBackend();
   }
   if (document.body) boot();
   else document.addEventListener('DOMContentLoaded', boot);

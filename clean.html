@@ -1239,7 +1239,7 @@
       if (enterBtn) enterBtn.disabled = true;
       showMessage('正在驗證密碼…', 'info');
 
-      setTimeout(function() {
+      function runVerify() {
         google.script.run
           .withSuccessHandler(function(result) {
             if (enterBtn) enterBtn.disabled = false;
@@ -1260,7 +1260,20 @@
             showMessage(error.message || '連線暫時失敗，請再試一次。', 'error');
           })
           .verifyScoreSystemPassword(inputPassword);
-      }, 300);
+      }
+
+      var started = false;
+      function startOnce() {
+        if (started) return;
+        started = true;
+        runVerify();
+      }
+      setTimeout(startOnce, 12000);
+      if (window.warmSchoolApi) {
+        window.warmSchoolApi().then(startOnce);
+      } else {
+        setTimeout(startOnce, 150);
+      }
     }
     
     // 查詢所有記錄
