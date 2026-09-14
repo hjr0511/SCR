@@ -466,6 +466,63 @@
       box-shadow: 0 8px 24px rgba(0,0,0,0.25);
       line-height: 1.4;
     }
+    .alert-modal {
+      display: none;
+      position: fixed;
+      z-index: 4100;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.45);
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+      pointer-events: auto;
+    }
+    .alert-modal.show {
+      display: flex;
+    }
+    .alert-modal-box {
+      background: #fff;
+      color: #333;
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 22px 18px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+      text-align: left;
+    }
+    .alert-modal-box h3 {
+      margin: 0 0 10px;
+      color: #c62828;
+      font-size: 22px;
+    }
+    .alert-modal-box p {
+      margin: 0 0 10px;
+      font-size: 16px;
+      line-height: 1.5;
+      color: #444;
+    }
+    .alert-modal-box ul {
+      margin: 0 0 18px;
+      padding-left: 22px;
+      color: #333;
+      font-size: 16px;
+      line-height: 1.7;
+    }
+    .alert-modal-ok {
+      width: 100%;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 8px;
+      background: #e67e22;
+      color: #fff;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+    }
     
     .message {
       padding: 15px;
@@ -918,6 +975,15 @@
 
   <div id="uploadSuccessModal" class="toast-modal" aria-live="assertive">
     <div class="toast-modal-box">送出成功</div>
+  </div>
+
+  <div id="alertModal" class="alert-modal" role="dialog" aria-modal="true" aria-labelledby="alertModalTitle">
+    <div class="alert-modal-box">
+      <h3 id="alertModalTitle">無法提交評分</h3>
+      <p id="alertModalText"></p>
+      <ul id="alertModalList"></ul>
+      <button type="button" class="alert-modal-ok" id="alertModalOk">知道了</button>
+    </div>
   </div>
 
   <!-- 設定 Modal -->
@@ -1736,6 +1802,17 @@
         e.preventDefault();
         saveSettings();
       });
+
+      const alertModal = document.getElementById('alertModal');
+      const alertModalOk = document.getElementById('alertModalOk');
+      if (alertModalOk) {
+        alertModalOk.addEventListener('click', closeAlertModal);
+      }
+      if (alertModal) {
+        alertModal.addEventListener('click', function(e) {
+          if (e.target === alertModal) closeAlertModal();
+        });
+      }
     }
     
     // 回評分結果查詢頁（GitHub 靜態頁）
@@ -1827,15 +1904,14 @@
       const timeSlot = document.getElementById('modalTimeSlot').value;
       
       const gradeNeeded = isEvaluatorGradeRequired(type);
-      
-      // 驗證必填欄位（老師或生輔組不需要評分人員年級）
-      if (!type || !evaluator || !area || !timeSlot) {
-        showMessage('請填寫所有必填欄位', 'error');
-        return;
-      }
-      
-      if (gradeNeeded && !grade) {
-        showMessage('請選擇評分人員年級', 'error');
+      const missing = [];
+      if (!type) missing.push('評分人員類型');
+      if (!(evaluator || '').trim()) missing.push('評分人員姓名');
+      if (!area) missing.push('評比地點');
+      if (!timeSlot) missing.push('評比項目');
+      if (gradeNeeded && !grade) missing.push('評分人員年級');
+      if (missing.length) {
+        showAlertModal('無法儲存設定', '以下資料空缺，請補齊後再儲存：', missing);
         return;
       }
       
@@ -2210,33 +2286,40 @@
     function submitScore() {
       const form = document.getElementById('scoreForm');
       const submitBtn = document.getElementById('submitBtn');
-      const evaluatorGrade = document.getElementById('evaluatorGrade').value;
-      const evaluatorType = document.getElementById('evaluatorType').value;
-      const timeSlot = document.getElementById('timeSlot').value;
-      
-      if (!evaluatorType || !timeSlot) {
-        showMessage('請先點擊「設定評分資訊」按鈕設定評分人員類型和評比項目', 'error');
-        return;
-      }
+      const evaluatorGrade = (document.getElementById('evaluatorGrade').value || '').trim();
+      const evaluatorType = (document.getElementById('evaluatorType').value || '').trim();
+      const timeSlot = (document.getElementById('timeSlot').value || '').trim();
+      const evaluator = (document.getElementById('evaluator').value || '').trim();
+      const classroomName = (document.getElementById('classroom').value || '').trim();
+      const items = collectNapItems();
+      const notes = (document.getElementById('notes').value || '').trim();
+      const missing = [];
+
+      if (!evaluator) missing.push('評分人員姓名');
+      if (!evaluatorType) missing.push('評分人員類型（請先「設定評分資訊」）');
+      if (!timeSlot) missing.push('評比項目（請先「設定評分資訊」）');
       if (isEvaluatorGradeRequired(evaluatorType) && !evaluatorGrade) {
-        showMessage('請先點擊「設定評分資訊」按鈕設定評分人員年級', 'error');
+        missing.push('評分人員年級（請先「設定評分資訊」）');
+      }
+      if (!classroomName) missing.push('教室');
+      if (isNapCategory() && items.G > 0 && !notes) {
+        missing.push('G 其他行為的文字說明');
+      }
+      if (photos.some(function(photo) { return photo && photo.uploading; })) {
+        missing.push('尚有照片正在上傳，請稍候完成');
+      }
+
+      if (missing.length) {
+        showAlertModal('無法提交評分', '以下資料空缺或尚未完成，請補齊後再送出：', missing);
         return;
       }
       if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-      }
-      
-      const items = collectNapItems();
-      const notes = (document.getElementById('notes').value || '').trim();
-      if (isNapCategory() && items.G > 0 && !notes) {
-        showMessage('勾選 G 其他行為時請填寫文字說明', 'error');
+        showAlertModal('無法提交評分', '還有必填資料未填寫，請檢查表單後再送出。', []);
         return;
       }
       
       const classroomSelect = document.getElementById('classroom');
       const selectedOption = classroomSelect.options[classroomSelect.selectedIndex];
-      const classroomName = classroomSelect.value;
       const classroomId = (selectedOption && selectedOption.getAttribute('data-id')) || '';
       
       let bonus = 0;
@@ -2393,6 +2476,32 @@
       stayOnScoringView();
     }
     
+    function closeAlertModal() {
+      const modal = document.getElementById('alertModal');
+      if (modal) modal.classList.remove('show');
+    }
+
+    function showAlertModal(title, message, items) {
+      const modal = document.getElementById('alertModal');
+      const titleEl = document.getElementById('alertModalTitle');
+      const textEl = document.getElementById('alertModalText');
+      const listEl = document.getElementById('alertModalList');
+      if (!modal || !titleEl || !textEl || !listEl) {
+        showMessage(message || title, 'error');
+        return;
+      }
+      titleEl.textContent = title || '無法提交評分';
+      textEl.textContent = message || '';
+      listEl.innerHTML = '';
+      (items || []).forEach(function(item) {
+        const li = document.createElement('li');
+        li.textContent = item;
+        listEl.appendChild(li);
+      });
+      listEl.style.display = items && items.length ? 'block' : 'none';
+      modal.classList.add('show');
+    }
+
     // 顯示訊息
     function showMessage(text, type) {
       const messageDiv = document.getElementById('message');
