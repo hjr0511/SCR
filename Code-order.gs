@@ -3136,158 +3136,71 @@ function apiCall(action, args, authPassword) {
  * 取得評分系統密碼（第一組密碼，給老師/管理員使用）
  * @return {string} 密碼
  */
-function getScoreSystemPassword() {
+function getAuthPasswords_() {
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get('scr_auth_pwds');
+  if (hit) {
+    try {
+      const parsed = JSON.parse(hit);
+      if (parsed && typeof parsed.teacher === 'string') return parsed;
+    } catch (e) {}
+  }
+  const passwords = { teacher: '1234', student: '5678', admin: '9999' };
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(SHEET_NAMES.SETTINGS);
-    
     if (!sheet) {
       initializeSheets();
       sheet = ss.getSheetByName(SHEET_NAMES.SETTINGS);
     }
-    
     const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) {
-      // 如果沒有資料，返回預設密碼
-      return '1234';
-    }
-    
-    // 查找「評分系統密碼」設定
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][0] || '').trim() === '評分系統密碼') {
-        return String(data[i][1] || '').trim();
-      }
+      const key = String(data[i][0] || '').trim();
+      const val = String(data[i][1] || '').trim();
+      if (key === '評分系統密碼') passwords.teacher = val || passwords.teacher;
+      else if (key === '學生密碼') passwords.student = val || passwords.student;
+      else if (key === '管理員密碼') passwords.admin = val || passwords.admin;
     }
-    
-    // 如果找不到，返回預設密碼
-    return '1234';
   } catch (error) {
     Logger.log('取得密碼失敗：' + error.toString());
-    return '1234'; // 預設密碼
   }
+  cache.put('scr_auth_pwds', JSON.stringify(passwords), 300);
+  return passwords;
 }
 
-/**
- * 取得學生密碼（第二組密碼，給學生使用）
- * @return {string} 密碼
- */
+function getScoreSystemPassword() {
+  return getAuthPasswords_().teacher;
+}
+
 function getStudentPassword() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let sheet = ss.getSheetByName(SHEET_NAMES.SETTINGS);
-    
-    if (!sheet) {
-      initializeSheets();
-      sheet = ss.getSheetByName(SHEET_NAMES.SETTINGS);
-    }
-    
-    const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) {
-      // 如果沒有資料，返回預設學生密碼
-      return '5678';
-    }
-    
-    // 查找「學生密碼」設定
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][0] || '').trim() === '學生密碼') {
-        return String(data[i][1] || '').trim();
-      }
-    }
-    
-    // 如果找不到，返回預設學生密碼
-    return '5678';
-  } catch (error) {
-    Logger.log('取得學生密碼失敗：' + error.toString());
-    return '5678'; // 預設學生密碼
-  }
+  return getAuthPasswords_().student;
 }
 
-/**
- * 取得管理員密碼（第三組密碼，給衛生組使用）
- * @return {string} 密碼
- */
 function getAdminPassword() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let sheet = ss.getSheetByName(SHEET_NAMES.SETTINGS);
-    
-    if (!sheet) {
-      initializeSheets();
-      sheet = ss.getSheetByName(SHEET_NAMES.SETTINGS);
-    }
-    
-    const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) {
-      // 如果沒有資料，返回預設管理員密碼
-      return '9999';
-    }
-    
-    // 查找「管理員密碼」設定
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][0] || '').trim() === '管理員密碼') {
-        return String(data[i][1] || '').trim();
-      }
-    }
-    
-    // 如果找不到，返回預設管理員密碼
-    return '9999';
-  } catch (error) {
-    Logger.log('取得管理員密碼失敗：' + error.toString());
-    return '9999'; // 預設管理員密碼
-  }
+  return getAuthPasswords_().admin;
 }
 
-/**
- * 驗證評分系統密碼
- * @param {string} inputPassword 使用者輸入的密碼
- * @return {Object} 驗證結果（包含正確的跳轉URL和登入類型）
- */
 function verifyScoreSystemPassword(inputPassword) {
   try {
-    const teacherPassword = getScoreSystemPassword();
-    const studentPassword = getStudentPassword();
-    const adminPassword = getAdminPassword();
+    const passwords = getAuthPasswords_();
     const inputPwd = String(inputPassword || '').trim();
-    
-    let loginType = ''; // 'teacher'、'student' 或 'admin'
+    let loginType = '';
     let isCorrect = false;
-    
-    // 檢查是否為第一組密碼（老師）
-    if (inputPwd === String(teacherPassword).trim()) {
+    if (inputPwd && inputPwd === String(passwords.teacher || '').trim()) {
       isCorrect = true;
       loginType = 'teacher';
-    }
-    // 檢查是否為第二組密碼（學生）
-    else if (inputPwd === String(studentPassword).trim()) {
+    } else if (inputPwd && inputPwd === String(passwords.student || '').trim()) {
       isCorrect = true;
       loginType = 'student';
-    }
-    // 檢查是否為第三組密碼（管理員/衛生組）
-    else if (inputPwd === String(adminPassword).trim()) {
+    } else if (inputPwd && inputPwd === String(passwords.admin || '').trim()) {
       isCorrect = true;
       loginType = 'admin';
     }
-    
-    // 獲取Web App的URL
-    let scoreSystemUrl = '';
-    try {
-      const service = ScriptApp.getService();
-      if (service) {
-        // 在 URL 中加入登入類型參數
-        scoreSystemUrl = service.getUrl() + '?page=score&loginType=' + loginType;
-      } else {
-        // 如果無法獲取服務URL，使用當前URL的基礎部分
-        scoreSystemUrl = '';
-      }
-    } catch (e) {
-      Logger.log('獲取服務URL失敗：' + e.toString());
-    }
-    
     return {
       success: isCorrect,
       message: isCorrect ? '密碼正確' : '密碼錯誤，請重新輸入',
-      url: scoreSystemUrl,
-      loginType: loginType // 返回登入類型
+      url: '',
+      loginType: loginType
     };
   } catch (error) {
     Logger.log('驗證密碼失敗：' + error.toString());
