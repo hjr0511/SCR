@@ -2107,12 +2107,12 @@
       Array.from(files).forEach(function(file) {
         if (isLikelyImageFile(file)) {
           const startedAt = Date.now();
-          compressImage(file, 360, 360, 0.45)
+          compressImage(file, 280, 280, 0.4)
             .then(function(compressedBase64) {
               addPhotoAndUpload(compressedBase64, startedAt);
             })
             .catch(function() {
-              compressImage(file, 280, 280, 0.35)
+              compressImage(file, 240, 240, 0.35)
                 .then(function(compressedBase64) {
                   addPhotoAndUpload(compressedBase64, startedAt);
                 })

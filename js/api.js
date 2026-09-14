@@ -387,39 +387,39 @@
   var iframeWarmed = false;
 
   function uploadPhotoByChunks(base64, filename) {
-    var chunkSize = 1500;
+    var chunkSize = 2000;
     var data = String(base64 || '');
     var comma = data.indexOf(',');
     if (comma >= 0) data = data.substring(comma + 1);
     var total = Math.ceil(data.length / chunkSize) || 1;
-    var index = 0;
+    var n;
+    var tasks = [];
 
     function sendChunk(chunkIndex, attempt) {
       var part = data.substr(chunkIndex * chunkSize, chunkSize);
-      var waitMs = chunkIndex === 0 ? 15000 : 12000;
-      var maxAttempt = 1;
-      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, chunkIndex, total, part]), waitMs).catch(function (err) {
-        if (attempt >= maxAttempt) throw err;
-        return delay(400).then(function () {
+      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, chunkIndex, total, part]), 12000).catch(function (err) {
+        if (attempt >= 1) throw err;
+        return delay(300).then(function () {
           return sendChunk(chunkIndex, attempt + 1);
         });
       });
     }
 
-    function sendNext() {
-      if (index >= total) {
-        return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000).catch(function () {
-          return delay(500).then(function () {
-            return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000);
-          });
-        });
-      }
-      var current = index;
-      index += 1;
-      return sendChunk(current, 0).then(sendNext);
+    for (n = 0; n < total; n++) {
+      tasks.push((function (chunkIndex) {
+        return function () {
+          return sendChunk(chunkIndex, 0);
+        };
+      })(n));
     }
 
-    return sendNext();
+    return runPool(tasks, 2).then(function () {
+      return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000).catch(function () {
+        return delay(400).then(function () {
+          return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000);
+        });
+      });
+    });
   }
 
   var uploadChain = Promise.resolve();
