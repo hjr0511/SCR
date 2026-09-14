@@ -350,21 +350,8 @@
 
   function apiRequest(payload, timeoutMs) {
     var waitMs = timeoutMs || apiTimeoutFor(payload && payload.action);
-    return new Promise(function (resolve, reject) {
-      var settled = false;
-      var failed = 0;
-      function ok(value) {
-        if (settled) return;
-        settled = true;
-        resolve(value);
-      }
-      function oneFail(err) {
-        failed += 1;
-        if (settled) return;
-        if (failed >= 2) reject(err);
-      }
-      fetchGasGet(payload, Math.min(6000, waitMs)).then(ok, oneFail);
-      jsonpGet(payload, waitMs).then(ok, oneFail);
+    return jsonpGet(payload, waitMs).catch(function () {
+      return fetchGasGet(payload, waitMs);
     });
   }
 
@@ -585,13 +572,10 @@
 
   function onPageHidden() {
     iframeFailed = false;
-    warmPromise = null;
   }
 
   function onPageVisible() {
     iframeFailed = false;
-    warmPromise = null;
-    if (isConfigured()) warmBackend();
   }
   global.addEventListener('pageshow', onPageVisible);
   global.addEventListener('pagehide', onPageHidden);
