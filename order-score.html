@@ -1695,6 +1695,7 @@
       const fileInput = document.getElementById('fileInput');
       if (cameraBtn && fileInput) {
         cameraBtn.addEventListener('click', function() {
+          if (window.prepareSchoolApiBridge) window.prepareSchoolApiBridge();
           fileInput.setAttribute('capture', 'environment');
           fileInput.removeAttribute('webkitdirectory');
           fileInput.removeAttribute('directory');

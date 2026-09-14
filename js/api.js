@@ -99,7 +99,12 @@
     return false;
   }
 
+  var lastRecreateAt = 0;
+
   function recreateBridge() {
+    var now = Date.now();
+    if (iframe && now - lastRecreateAt < 800) return;
+    lastRecreateAt = now;
     iframeReady = false;
     iframeFailed = false;
     iframeWarmed = false;
@@ -113,6 +118,16 @@
     if (!isConfigured()) return;
     if (iframeReady) return;
     if (hasPendingCalls()) return;
+    recreateBridge();
+  }
+
+  function prepareBridgeForCamera() {
+    iframeFailed = false;
+    if (!isConfigured()) return;
+    if (hasPendingCalls()) {
+      iframeReady = false;
+      return;
+    }
     recreateBridge();
   }
 
@@ -258,7 +273,7 @@
   var iframeWarmed = false;
 
   function uploadPhotoByChunks(base64, filename) {
-    var chunkSize = 3200;
+    var chunkSize = 4500;
     var data = String(base64 || '');
     var comma = data.indexOf(',');
     if (comma >= 0) data = data.substring(comma + 1);
@@ -267,7 +282,7 @@
     var n;
     function sendChunk(index, attempt) {
       var part = data.substr(index * chunkSize, chunkSize);
-      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, index, total, part]), 25000).catch(function (err) {
+      return jsonpGet(buildPayload('uploadPhotoChunk', [filename, index, total, part]), 15000).catch(function (err) {
         if (attempt >= 1) throw err;
         return sendChunk(index, attempt + 1);
       });
@@ -279,8 +294,8 @@
         };
       })(n));
     }
-    return runPool(tasks, 2).then(function () {
-      return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 30000);
+    return runPool(tasks, 4).then(function () {
+      return jsonpGet(buildPayload('finalizePhotoUpload', [filename]), 25000);
     });
   }
 
@@ -289,7 +304,7 @@
     if (iframeReady) {
       return postCall('uploadSinglePhoto', [base64, filename], timeoutMs);
     }
-    return waitForBridge(8000, false).then(function (ok) {
+    return waitForBridge(2500, false).then(function (ok) {
       if (!ok || !iframe || !iframe.contentWindow) {
         throw new Error('NO_IFRAME');
       }
@@ -301,15 +316,7 @@
 
   function uploadSinglePhotoFast(base64, filename) {
     var run = uploadChain.then(function () {
-      return tryIframePhotoUpload(base64, filename, 20000).catch(function () {
-        if (!hasPendingCalls()) recreateBridge();
-        return waitForBridge(8000, false).then(function (ok) {
-          if (!ok || !iframe || !iframe.contentWindow) {
-            throw new Error('NO_IFRAME');
-          }
-          return postCall('uploadSinglePhoto', [base64, filename], 20000);
-        });
-      }).catch(function () {
+      return tryIframePhotoUpload(base64, filename, 8000).catch(function () {
         return uploadPhotoByChunks(base64, filename);
       });
     });
@@ -436,6 +443,14 @@
   global.google.script.run = createRunner({});
   global.callSchoolApi = callApi;
   global.reviveSchoolApiBridge = reviveBridge;
+  global.prepareSchoolApiBridge = prepareBridgeForCamera;
+
+  function onPageHidden() {
+    iframeReady = false;
+    iframeFailed = false;
+    if (hasPendingCalls()) return;
+    if (isConfigured()) recreateBridge();
+  }
 
   function onPageVisible() {
     iframeFailed = false;
@@ -444,7 +459,11 @@
     if (!iframeReady) reviveBridge();
   }
   global.addEventListener('pageshow', onPageVisible);
-  document.addEventListener('visibilitychange', onPageVisible);
+  global.addEventListener('pagehide', onPageHidden);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') onPageHidden();
+    else onPageVisible();
+  });
 
   function boot() {
     if (!isConfigured()) showConfigError();

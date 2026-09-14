@@ -1695,6 +1695,7 @@
       
       // 相機按鈕
       document.getElementById('cameraBtn').addEventListener('click', function() {
+        if (window.prepareSchoolApiBridge) window.prepareSchoolApiBridge();
         const fileInput = document.getElementById('fileInput');
         // 設置 capture 屬性，強制使用相機拍照
         fileInput.setAttribute('capture', 'environment'); // 使用後置相機
