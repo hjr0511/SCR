@@ -273,7 +273,7 @@
   var iframeWarmed = false;
 
   function uploadPhotoByChunks(base64, filename) {
-    var chunkSize = 4500;
+    var chunkSize = 7000;
     var data = String(base64 || '');
     var comma = data.indexOf(',');
     if (comma >= 0) data = data.substring(comma + 1);
@@ -312,19 +312,10 @@
     });
   }
 
-  var photoUploadsDone = 0;
-
   function tryIframePhotoUpload(base64, filename, timeoutMs) {
     ensureIframe();
-    var check = iframeReady ? Promise.resolve(true) : pingBridge(2000);
-    if (iframeReady && photoUploadsDone > 0) {
-      check = pingBridge(2000).then(function (ok) {
-        if (ok) return true;
-        if (!hasPendingCalls()) recreateBridge();
-        return waitForBridge(4000, false);
-      });
-    }
-    return check.then(function (ok) {
+    var ready = iframeReady ? Promise.resolve(true) : waitForBridge(8000, false);
+    return ready.then(function (ok) {
       if (!ok || !iframe || !iframe.contentWindow) {
         throw new Error('NO_IFRAME');
       }
@@ -337,16 +328,7 @@
   function uploadSinglePhotoFast(base64, filename) {
     var run = uploadChain.then(function () {
       return tryIframePhotoUpload(base64, filename, 60000).catch(function () {
-        if (!hasPendingCalls()) recreateBridge();
-        return waitForBridge(4000, false).then(function (ok) {
-          if (!ok || !iframe || !iframe.contentWindow) {
-            throw new Error('NO_IFRAME');
-          }
-          return postCall('uploadSinglePhoto', [base64, filename], 45000);
-        });
-      }).then(function (link) {
-        if (link) photoUploadsDone += 1;
-        return link;
+        return tryIframePhotoUpload(base64, filename, 45000);
       }).catch(function () {
         return uploadPhotoByChunks(base64, filename);
       });
