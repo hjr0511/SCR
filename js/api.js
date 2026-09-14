@@ -213,7 +213,7 @@
       script.onerror = function () {
         setTimeout(function () {
           fail(new Error('連線暫時失敗，請再試一次。'));
-        }, 600);
+        }, 1500);
       };
       var qs = [
         'action=' + encodeURIComponent(payload.action || ''),
@@ -387,7 +387,7 @@
   var iframeWarmed = false;
 
   function uploadPhotoByChunks(base64, filename) {
-    var chunkSize = 4000;
+    var chunkSize = 1500;
     var data = String(base64 || '');
     var comma = data.indexOf(',');
     if (comma >= 0) data = data.substring(comma + 1);
