@@ -138,14 +138,15 @@
     });
   }
 
-  function jsonpGet(payload) {
+  function jsonpGet(payload, timeoutMs) {
     return new Promise(function (resolve, reject) {
       var cb = 'schoolScoreCb' + (++callId) + '_' + Date.now();
       var script = document.createElement('script');
+      var waitMs = timeoutMs || 60000;
       var timer = setTimeout(function () {
         cleanup();
         reject(new Error('後端沒有回應。請把專案裡的 Code.gs 貼到 Apps Script，再部署「新版本」。'));
-      }, 30000);
+      }, waitMs);
 
       function cleanup() {
         clearTimeout(timer);
@@ -220,6 +221,27 @@
     });
   }
 
+  function classroomCacheKey() {
+    var cfg = global.APP_CONFIG || {};
+    return (cfg.AUTH_STORAGE_KEY || 'SCHOOL_SCORE_AUTH') + '_CLASSROOMS';
+  }
+
+  function readClassroomCache() {
+    try {
+      var parsed = JSON.parse(localStorage.getItem(classroomCacheKey()) || 'null');
+      if (!parsed || !Array.isArray(parsed.list) || !parsed.list.length) return null;
+      return parsed.list;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function writeClassroomCache(list) {
+    try {
+      localStorage.setItem(classroomCacheKey(), JSON.stringify({ ts: Date.now(), list: list || [] }));
+    } catch (err) {}
+  }
+
   function callApi(action, args) {
     if (!isConfigured()) {
       showConfigError();
@@ -229,6 +251,11 @@
     if (action === 'uploadSinglePhoto') {
       return callViaIframe(action, args).catch(function () {
         return uploadPhotoByChunks(args[0], args[1]);
+      });
+    }
+    if (action === 'getAllClassrooms') {
+      return jsonpGet(buildPayload(action, args), 90000).catch(function () {
+        return jsonpGet(buildPayload(action, args), 90000);
       });
     }
     return jsonpGet(buildPayload(action, args));
@@ -268,9 +295,18 @@
         }
         return function () {
           var fnArgs = Array.prototype.slice.call(arguments);
-          callApi(String(prop), fnArgs).then(function (result) {
+          var action = String(prop);
+          var cachedClassrooms = action === 'getAllClassrooms' ? readClassroomCache() : null;
+          if (cachedClassrooms && typeof handlers.success === 'function') {
+            try { handlers.success(cachedClassrooms); } catch (err) {}
+          }
+          callApi(action, fnArgs).then(function (result) {
+            if (action === 'getAllClassrooms' && Array.isArray(result) && result.length) {
+              writeClassroomCache(result);
+            }
             if (typeof handlers.success === 'function') handlers.success(result);
           }).catch(function (err) {
+            if (cachedClassrooms) return;
             if (typeof handlers.fail === 'function') handlers.fail(err);
             else console.error(err);
           });

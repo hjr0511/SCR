@@ -907,11 +907,11 @@
     
     // 頁面載入時初始化
     window.onload = function() {
-      loadClassrooms();
       setupEventListeners();
       setupQueryTabs();
       applyWeeklyAdminUi();
     };
+    loadClassrooms();
     
     // 查詢分頁切換：一次只顯示一種查詢
     function setupQueryTabs() {
@@ -940,6 +940,14 @@
     // 載入教室清單
     function loadClassrooms() {
       try {
+        const select = document.getElementById('classroomSelect');
+        if (select && select.options.length <= 1) {
+          const loadingOpt = document.createElement('option');
+          loadingOpt.value = '';
+          loadingOpt.textContent = '載入教室中…';
+          loadingOpt.disabled = true;
+          select.appendChild(loadingOpt);
+        }
         google.script.run
           .withSuccessHandler(function(classrooms) {
             try {
