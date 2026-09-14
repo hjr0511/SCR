@@ -358,6 +358,24 @@
       background-color: #ccc;
       cursor: not-allowed;
     }
+
+    .skip-btn {
+      width: 100%;
+      padding: 12px;
+      background-color: #fff;
+      color: #546e7a;
+      border: 2px solid #cfd8dc;
+      border-radius: 5px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    .skip-btn:hover {
+      background-color: #eceff1;
+      border-color: #90a4ae;
+    }
     
     .toast-modal {
       display: none;
@@ -807,6 +825,8 @@
       </div>
       
       <button type="submit" class="submit-btn" id="submitBtn">提交評分</button>
+      <button type="button" class="skip-btn" id="skipBtn">跳過此班（不送出）</button>
+      <p class="info-text">這一班沒有加扣分時，請按「跳過此班」，不要提交 0 分。</p>
     </form>
   </div>
 
@@ -1546,6 +1566,11 @@
           e.target.value = '';
         });
       }
+
+      const skipBtn = document.getElementById('skipBtn');
+      if (skipBtn) {
+        skipBtn.addEventListener('click', skipCurrentClassroom);
+      }
       
       ['itemA','itemB','itemNone','itemC','itemD','itemE','itemF','itemG'].forEach(function(id) {
         const el = document.getElementById(id);
@@ -2229,36 +2254,24 @@
       }, 1000);
     }
     
-    // 處理提交成功
-    function handleSubmitSuccess(result, classroomName) {
-      showUploadSuccessModal();
-      
-      // 自動切換到下一個教室（按教室名稱區分，因編號可能是樓層而重複）
+    function goToNextClassroom(classroomName) {
       const classroomSelect = document.getElementById('classroom');
-      const currentClassroomName = classroomName;
-      
-      if (currentClassrooms.length > 0) {
-        let currentIndex = -1;
-        for (let i = 0; i < currentClassrooms.length; i++) {
-          if (currentClassrooms[i].name === currentClassroomName) {
-            currentIndex = i;
-            break;
-          }
-        }
-        
-        if (currentIndex >= 0 && currentIndex < currentClassrooms.length - 1) {
-          const nextClassroom = currentClassrooms[currentIndex + 1];
-          classroomSelect.value = nextClassroom.name;
-        } else if (currentIndex >= 0 && currentIndex === currentClassrooms.length - 1) {
-          const firstClassroom = currentClassrooms[0];
-          classroomSelect.value = firstClassroom.name;
-        } else {
-          if (currentClassrooms.length > 0) {
-            classroomSelect.value = currentClassrooms[0].name;
-          }
+      if (!classroomSelect || !currentClassrooms.length) return;
+      let currentIndex = -1;
+      for (let i = 0; i < currentClassrooms.length; i++) {
+        if (currentClassrooms[i].name === classroomName) {
+          currentIndex = i;
+          break;
         }
       }
-      
+      if (currentIndex >= 0 && currentIndex < currentClassrooms.length - 1) {
+        classroomSelect.value = currentClassrooms[currentIndex + 1].name;
+      } else if (currentClassrooms.length > 0) {
+        classroomSelect.value = currentClassrooms[0].name;
+      }
+    }
+
+    function resetScoreForm() {
       photos = [];
       updatePhotoPreview();
       if (document.getElementById('itemNone')) document.getElementById('itemNone').checked = true;
@@ -2270,13 +2283,30 @@
       if (document.getElementById('bonus')) document.getElementById('bonus').value = '0';
       document.getElementById('notes').value = '';
       updateTotalScore();
-      // 保留評分人員年級、評分人員類型、評分人員姓名、評分區域、評分時段（已自動儲存）
-      
       const submitBtn = document.getElementById('submitBtn');
       if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.textContent = '提交評分';
       }
+    }
+
+    function skipCurrentClassroom() {
+      const classroomSelect = document.getElementById('classroom');
+      const classroomName = classroomSelect ? classroomSelect.value : '';
+      if (!classroomName) {
+        showMessage('請先選擇教室', 'error');
+        return;
+      }
+      goToNextClassroom(classroomName);
+      resetScoreForm();
+      showMessage('已跳過「' + classroomName + '」，未送出評分', 'success');
+    }
+    
+    // 處理提交成功
+    function handleSubmitSuccess(result, classroomName) {
+      showUploadSuccessModal();
+      goToNextClassroom(classroomName);
+      resetScoreForm();
     }
     
     // 顯示訊息
