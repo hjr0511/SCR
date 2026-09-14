@@ -476,31 +476,27 @@
       font-weight: bold;
       cursor: pointer;
     }
-    .photo-item.uploading::after {
-      content: '上傳中';
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(33, 150, 243, 0.85);
-      color: #fff;
-      font-size: 12px;
-      text-align: center;
-      padding: 4px 0;
-    }
-
+    .photo-item.uploading::after,
     .photo-item.error::after {
-      content: '失敗·點擊重試';
+      content: none;
+    }
+    .photo-status {
       position: absolute;
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(192, 57, 43, 0.9);
+      background: rgba(33, 150, 243, 0.9);
       color: #fff;
-      font-size: 12px;
+      font-size: 13px;
       text-align: center;
-      padding: 4px 0;
-      cursor: pointer;
+      padding: 5px 4px;
+      line-height: 1.3;
+    }
+    .photo-item.error .photo-status {
+      background: rgba(192, 57, 43, 0.92);
+    }
+    .photo-item.done .photo-status {
+      background: rgba(46, 125, 50, 0.9);
     }
     
     .message {
@@ -876,6 +872,7 @@
         <input type="file" id="fileInput" accept="image/*" multiple>
         
         <div class="photo-preview" id="photoPreview"></div>
+        <p class="info-text" id="photoUploadTime"></p>
         
         <div class="score-summary">
           <strong>照片扣分：<span id="photoDeduction">0</span> 分</strong>
@@ -2135,19 +2132,20 @@
       return /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(file.name || '');
     }
 
-    // 處理檔案選擇：壓縮後立刻上傳
+    // 處理檔案選擇：壓縮後立刻上傳（計時從選到檔案／拍完返回開始）
     function handleFileSelect(files) {
       if (window.reviveSchoolApiBridge) window.reviveSchoolApiBridge();
       Array.from(files).forEach(function(file) {
         if (isLikelyImageFile(file)) {
+          const startedAt = Date.now();
           compressImage(file, 240, 240, 0.22)
             .then(function(compressedBase64) {
-              addPhotoAndUpload(compressedBase64);
+              addPhotoAndUpload(compressedBase64, startedAt);
             })
             .catch(function() {
               compressImage(file, 200, 200, 0.18)
                 .then(function(compressedBase64) {
-                  addPhotoAndUpload(compressedBase64);
+                  addPhotoAndUpload(compressedBase64, startedAt);
                 })
                 .catch(function() {
                   showMessage('照片壓縮失敗，請改選較小的圖片再試', 'error');
@@ -2160,14 +2158,56 @@
     function getPhotoDataUrl(photo) {
       return typeof photo === 'string' ? photo : (photo && photo.dataUrl) || '';
     }
+
+    function formatUploadTime(ms) {
+      return (Math.max(0, Number(ms) || 0) / 1000).toFixed(1) + ' 秒';
+    }
+
+    function photoStatusText(photo) {
+      const start = photo && photo.uploadStartedAt ? photo.uploadStartedAt : Date.now();
+      const end = photo && photo.uploadEndedAt ? photo.uploadEndedAt : Date.now();
+      const t = formatUploadTime(end - start);
+      if (photo && photo.uploading) return '上傳中 ' + t;
+      if (photo && photo.error) return '失敗 ' + t + ' · 點擊重試';
+      if (photo && photo.link) return '完成 ' + t;
+      return t;
+    }
+
+    function markUploadEnd(item) {
+      item.uploadEndedAt = Date.now();
+      if (!item.uploadStartedAt) item.uploadStartedAt = item.uploadEndedAt;
+      const line = document.getElementById('photoUploadTime');
+      if (line) {
+        if (item.error) line.textContent = '最近一張失敗，耗時 ' + formatUploadTime(item.uploadEndedAt - item.uploadStartedAt);
+        else if (item.link) line.textContent = '最近一張完成，耗時 ' + formatUploadTime(item.uploadEndedAt - item.uploadStartedAt);
+      }
+    }
+
+    function startPhotoTimeTicker() {
+      if (window._photoTimeTicker) return;
+      window._photoTimeTicker = setInterval(function() {
+        let uploading = false;
+        photos.forEach(function(photo, index) {
+          if (photo && photo.uploading) uploading = true;
+          const el = document.querySelector('.photo-status[data-idx="' + index + '"]');
+          if (el && photo) el.textContent = photoStatusText(photo);
+        });
+        if (!uploading) {
+          clearInterval(window._photoTimeTicker);
+          window._photoTimeTicker = null;
+        }
+      }, 200);
+    }
     
-    function addPhotoAndUpload(dataUrl) {
+    function addPhotoAndUpload(dataUrl, startedAt) {
       const item = {
         dataUrl: dataUrl,
         link: '',
         uploading: true,
         error: false,
-        promise: null
+        promise: null,
+        uploadStartedAt: startedAt || Date.now(),
+        uploadEndedAt: 0
       };
       photos.push(item);
       startPhotoUpload(item);
@@ -2183,6 +2223,9 @@
       const filename = 'p' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.jpg';
       item.uploading = true;
       item.error = false;
+      if (item.uploadEndedAt || !item.uploadStartedAt) item.uploadStartedAt = Date.now();
+      item.uploadEndedAt = 0;
+      startPhotoTimeTicker();
       item.promise = new Promise(function(resolve) {
         var settled = false;
         var timer = setTimeout(function() {
@@ -2190,6 +2233,7 @@
           settled = true;
           item.uploading = false;
           item.error = true;
+          markUploadEnd(item);
           updatePhotoPreview();
           updateTotalScore();
           resolve('');
@@ -2202,6 +2246,7 @@
             item.link = link || '';
             item.uploading = false;
             item.error = !item.link;
+            markUploadEnd(item);
             updatePhotoPreview();
             updateTotalScore();
             resolve(item.link);
@@ -2212,6 +2257,7 @@
             clearTimeout(timer);
             item.uploading = false;
             item.error = true;
+            markUploadEnd(item);
             updatePhotoPreview();
             updateTotalScore();
             resolve('');
@@ -2228,7 +2274,7 @@
       
       photos.forEach(function(photo, index) {
         const div = document.createElement('div');
-        div.className = 'photo-item' + (photo && photo.uploading ? ' uploading' : '') + (photo && photo.error ? ' error' : '');
+        div.className = 'photo-item' + (photo && photo.uploading ? ' uploading' : '') + (photo && photo.error ? ' error' : '') + (photo && photo.link && !photo.uploading && !photo.error ? ' done' : '');
         
         const img = document.createElement('img');
         img.src = getPhotoDataUrl(photo);
@@ -2253,8 +2299,14 @@
         
         div.appendChild(img);
         div.appendChild(removeBtn);
+        const status = document.createElement('div');
+        status.className = 'photo-status';
+        status.setAttribute('data-idx', String(index));
+        status.textContent = photoStatusText(photo);
+        div.appendChild(status);
         preview.appendChild(div);
       });
+      if (photos.some(function(photo) { return photo && photo.uploading; })) startPhotoTimeTicker();
       
       document.getElementById('photoDeduction').textContent = countedPhotoDeduction();
     }
