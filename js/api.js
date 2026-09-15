@@ -191,23 +191,26 @@
         fail(new Error('後端沒有回應。請把專案裡的 Code.gs 貼到 Apps Script，再部署「新版本」。'));
       }, waitMs);
 
-      function cleanup() {
+      function cleanup(immediate) {
         clearTimeout(timer);
         global[cb] = function () {};
-        if (script.parentNode) script.parentNode.removeChild(script);
+        var wait = immediate ? 0 : 2000;
+        setTimeout(function () {
+          if (script.parentNode) script.parentNode.removeChild(script);
+        }, wait);
       }
 
       function fail(err) {
         if (settled) return;
         settled = true;
-        cleanup();
+        cleanup(true);
         reject(err);
       }
 
       global[cb] = function (data) {
         if (settled) return;
         settled = true;
-        cleanup();
+        cleanup(false);
         try { resolve(unwrap(data)); } catch (err) { reject(err); }
       };
       script.onerror = function () {};
@@ -389,8 +392,11 @@
         settled = true;
         clearTimeout(timer);
         window.removeEventListener('message', onMsg);
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-        if (form.parentNode) form.parentNode.removeChild(form);
+        // 先把成績回給畫面，稍後再拆 iframe，讓 Apps Script 連線能正常結束。
+        setTimeout(function () {
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+          if (form.parentNode) form.parentNode.removeChild(form);
+        }, isReject ? 0 : 2000);
         if (isReject) reject(err);
       }
       function onMsg(e) {
