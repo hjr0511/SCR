@@ -280,6 +280,7 @@
   function apiTimeoutFor(action) {
     if (action === 'verifyScoreSystemPassword' || action === 'ping') return 12000;
     if (action === 'getAllClassrooms' || action === 'getScoreRecords') return 90000;
+    if (action === 'getSemesterStatistics') return 90000;
     if (action === 'uploadPhotoChunk') return 20000;
     if (action === 'finalizePhotoUpload' || action === 'uploadSinglePhoto') return 40000;
     return 60000;

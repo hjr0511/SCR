@@ -2807,6 +2807,39 @@ function getClassroomComparison(classroomIds, weekStartDate, grade) {
 }
 
 /**
+ * 學期統計專用：只讀評分欄，不讀備註／細項／照片，也不改工作表。
+ */
+function getOrderScoreValuesForSemesterStats_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAMES.SCORES);
+  if (!sheet) {
+    return { data: null, col: null };
+  }
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) {
+    return { data: [], col: null };
+  }
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const col = getOrderScoreColMap_(headers);
+  const maxNeeded = Math.max(
+    Number(col.timestamp) || 0,
+    Number(col.evaluatedGrade) || 0,
+    Number(col.evaluatorType) || 0,
+    Number(col.evaluator) || 0,
+    Number(col.classroomId) || 0,
+    Number(col.classroomName) || 0,
+    Number(col.timeSlot) || 0,
+    Number(col.totalScore) || 0
+  ) + 1;
+  const width = Math.min(lastCol, Math.max(maxNeeded, 1));
+  return {
+    data: sheet.getRange(1, 1, lastRow, width).getValues(),
+    col: getOrderScoreColMap_(headers.slice(0, width))
+  };
+}
+
+/**
  * 取得學期總成績統計（按年級分組，計算特優和優等）
  * 學期成績 = 各週總分加總 ÷ 有評分的週數；該週無人評分則不列入，跳過的班當週以 75 分計。
  * 各週加減沿用「同一天同一評比項目多位老師取平均」後再加總。
@@ -2817,21 +2850,30 @@ function getClassroomComparison(classroomIds, weekStartDate, grade) {
  */
 function getSemesterStatistics(startDate, endDate, grade) {
   try {
-    const sheet = getOrderScoresSheet_();
-    
-    if (!sheet) {
-      return { success: false, error: '找不到評分記錄工作表' };
-    }
-    
     if (!startDate || !endDate) {
       return { success: false, error: '請指定開始日期和結束日期' };
     }
-    
-    const data = sheet.getDataRange().getValues();
+
+    const cache = CacheService.getScriptCache();
+    const cacheKey = 'sem_stats_v2_' + String(startDate) + '_' + String(endDate) + '_' + String(grade || '');
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.success) return parsed;
+      } catch (cacheErr) {}
+    }
+
+    const loaded = getOrderScoreValuesForSemesterStats_();
+    const data = loaded.data;
+    const col = loaded.col;
+
+    if (!data) {
+      return { success: false, error: '找不到評分記錄工作表' };
+    }
     if (data.length <= 1) {
       return { success: false, error: '沒有評分記錄' };
     }
-    const col = getOrderScoreColMap_(data[0]);
     
     // 計算日期範圍
     const semesterStart = new Date(startDate + ' 00:00:00');
@@ -3045,13 +3087,17 @@ function getSemesterStatistics(startDate, endDate, grade) {
       };
     });
     
-    return {
+    const payload = {
       success: true,
       startDate: Utilities.formatDate(semesterStart, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
       endDate: Utilities.formatDate(semesterEnd, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
       weekBaseScore: ORDER_WEEKLY_BASE_SCORE,
       statistics: result
     };
+    try {
+      cache.put(cacheKey, JSON.stringify(payload), 90);
+    } catch (putErr) {}
+    return payload;
   } catch (error) {
     Logger.log('getSemesterStatistics 發生錯誤：' + error.toString());
     return {
