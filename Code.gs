@@ -2871,14 +2871,7 @@ function dispatchAction_(action, args, authPassword) {
     uploadPhotoChunk: true,
     finalizePhotoUpload: true
   };
-  const adminActions = {
-    exportWeeklyStatisticsCsv: true,
-    exportWeeklyStatisticsPdf: true,
-    exportWeeklyStatisticsToSheet: true
-  };
-  if (adminActions[action]) {
-    requireAdminPassword_(authPassword);
-  } else if (mutatingActions[action]) {
+  if (mutatingActions[action]) {
     requireAuthPassword_(authPassword);
   }
 

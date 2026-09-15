@@ -850,7 +850,7 @@
     <div id="panel-weekly" class="query-panel" role="tabpanel">
       <div class="filter-section">
         <h2 style="margin-bottom: 8px; color: #333;">每週評分統計</h2>
-        <p class="panel-desc">週總分以 75 分為基準，再加上當週評分加減。例如當週加減合計 +25，週總分為 100。</p>
+        <p class="panel-desc">週總分以 75 分為基準，再加上當週評分加減。同一班、同一天、同一評比項目若有多位老師評分，取平均（例如午休 +3 與 −2，當日該項為 +0.5）。</p>
         <div class="form-group">
           <label for="weekSelect">選擇週（請選週一）</label>
           <div class="date-wrap"><input type="date" id="weekSelect"></div>
@@ -858,9 +858,8 @@
         </div>
         <div class="btn-row">
           <button type="button" class="search-btn" id="weeklyStatsBtn">查詢週統計</button>
-          <button type="button" class="search-btn secondary" id="weeklyAdminUnlockBtn">管理員登入</button>
-          <button type="button" class="search-btn secondary" id="weeklyExportBtn" hidden>匯出每週排名 CSV</button>
-          <button type="button" class="search-btn" id="weeklyExportPdfBtn" hidden style="background-color: #7e57c2;">匯出每週排名 PDF</button>
+          <button type="button" class="search-btn secondary" id="weeklyExportBtn">匯出每週排名</button>
+          <button type="button" class="search-btn" id="weeklyExportPdfBtn" style="background-color: #7e57c2;">匯出每週 PDF</button>
         </div>
       </div>
     </div>
@@ -893,7 +892,7 @@
     <div id="panel-comparison" class="query-panel" role="tabpanel">
       <div class="filter-section">
         <h2 style="margin-bottom: 8px; color: #333;">班級比較</h2>
-        <p class="panel-desc">同一年級內比較該週每日加減分；週總分同樣為 75 分基準再加上當週評分結果。</p>
+        <p class="panel-desc">同一年級內比較該週每日加減分；週總分同樣為 75 分基準再加上當週評分結果。同一天同一項目多位老師評分時取平均。</p>
         <div class="form-group">
           <label for="comparisonWeekSelect">選擇週（請選週一）</label>
           <div class="date-wrap"><input type="date" id="comparisonWeekSelect"></div>
@@ -996,7 +995,6 @@
     window.onload = function() {
       setupEventListeners();
       setupQueryTabs();
-      applyWeeklyAdminUi();
       loadClassrooms(false);
       const classroomSelect = document.getElementById('classroomSelect');
       function requestClassroomNetwork() {
@@ -1133,13 +1131,6 @@
         });
       }
 
-      const weeklyAdminUnlockBtn = document.getElementById('weeklyAdminUnlockBtn');
-      if (weeklyAdminUnlockBtn) {
-        weeklyAdminUnlockBtn.addEventListener('click', function() {
-          unlockWeeklyAdminExport();
-        });
-      }
-      
       // 匯出每週排名按鈕
       const weeklyExportBtn = document.getElementById('weeklyExportBtn');
       const weeklyExportPdfBtn = document.getElementById('weeklyExportPdfBtn');
@@ -1912,7 +1903,7 @@
       let html = '<p style="text-align: center; color: #666; margin-bottom: 12px; font-size: 16px; font-weight: bold;">';
       html += '比較期間：' + result.weekStart + ' ~ ' + result.weekEnd;
       html += '</p>';
-      html += '<p style="text-align: center; color: #888; margin-bottom: 20px; font-size: 14px;">週總分 = 75 分基準 + 當週評分加減；週一至週末為當日加減分</p>';
+      html += '<p style="text-align: center; color: #888; margin-bottom: 20px; font-size: 14px;">週總分 = 75 分基準 + 當週評分加減；週一至週末為當日加減分（同一項目多位老師取平均）</p>';
       
       html += '<div style="overflow-x: auto;">';
       html += '<table class="weekly-stats-table" style="min-width: 800px;">';
@@ -2059,65 +2050,8 @@
       showMessage('已產生每週排名 PDF，請點視窗中的連結下載。', 'success');
     }
 
-    function getStoredLoginType() {
-      try {
-        return sessionStorage.getItem((window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE') || '';
-      } catch (e) {
-        return '';
-      }
-    }
-
-    function isAdminSession() {
-      return getStoredLoginType() === 'admin';
-    }
-
-    function applyWeeklyAdminUi() {
-      const isAdmin = isAdminSession();
-      const csvBtn = document.getElementById('weeklyExportBtn');
-      const pdfBtn = document.getElementById('weeklyExportPdfBtn');
-      const unlockBtn = document.getElementById('weeklyAdminUnlockBtn');
-      if (csvBtn) csvBtn.hidden = !isAdmin;
-      if (pdfBtn) pdfBtn.hidden = !isAdmin;
-      if (unlockBtn) unlockBtn.hidden = isAdmin;
-    }
-
-    function unlockWeeklyAdminExport() {
-      const inputPassword = prompt('請輸入管理員密碼：');
-      if (inputPassword === null) return;
-      if (!String(inputPassword).trim()) {
-        showMessage('請輸入管理員密碼', 'error');
-        return;
-      }
-      const password = String(inputPassword).trim();
-      google.script.run
-        .withSuccessHandler(function(result) {
-          if (!result || !result.success) {
-            showMessage((result && result.message) || '密碼錯誤，請重新輸入', 'error');
-            return;
-          }
-          if (result.loginType !== 'admin') {
-            showMessage('此功能僅限管理員，一般身份無法匯出。', 'error');
-            return;
-          }
-          try {
-            sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.AUTH_STORAGE_KEY) || 'SCHOOL_SCORE_AUTH', password);
-            sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE', 'admin');
-          } catch (e) {}
-          applyWeeklyAdminUi();
-          showMessage('管理員已登入，可匯出每週排名。', 'success');
-        })
-        .withFailureHandler(function(error) {
-          showMessage('驗證密碼時發生錯誤：' + (error.message || error.toString()), 'error');
-        })
-        .verifyScoreSystemPassword(password);
-    }
-    
     function exportWeeklyStatisticsToCsv() {
       try {
-        if (!isAdminSession()) {
-          showMessage('此功能僅限管理員，請先按「管理員登入」。', 'error');
-          return;
-        }
         const weekSelect = document.getElementById('weekSelect');
         const weekDate = weekSelect ? weekSelect.value : '';
         const weeklyExportBtn = document.getElementById('weeklyExportBtn');
@@ -2176,10 +2110,6 @@
     // 匯出每週排名為 PDF（在後端產生匯出連結，再由瀏覽器開啟）
     function exportWeeklyStatisticsToPdf() {
       try {
-        if (!isAdminSession()) {
-          showMessage('此功能僅限管理員，請先按「管理員登入」。', 'error');
-          return;
-        }
         const weekSelect = document.getElementById('weekSelect');
         const weekDate = weekSelect ? weekSelect.value : '';
         const weeklyExportPdfBtn = document.getElementById('weeklyExportPdfBtn');
@@ -2543,7 +2473,7 @@
       let html = '<p style="text-align: center; color: #666; margin-bottom: 12px; font-size: 16px; font-weight: bold;">';
       html += '統計期間：' + result.weekStart + ' ~ ' + result.weekEnd;
       html += '</p>';
-      html += '<p style="text-align: center; color: #888; margin-bottom: 20px; font-size: 14px;">週總分 = 75 分基準 + 當週評分加減</p>';
+      html += '<p style="text-align: center; color: #888; margin-bottom: 20px; font-size: 14px;">週總分 = 75 分基準 + 當週評分加減（同一天同一項目多位老師取平均）</p>';
       
       grades.forEach(function(grade) {
         if (!statistics[grade]) {
