@@ -213,7 +213,9 @@
         cleanup(false);
         try { resolve(unwrap(data)); } catch (err) { reject(err); }
       };
-      script.onerror = function () {};
+      script.onerror = function () {
+        fail(new Error('連線被瀏覽器阻擋，請再試一次。'));
+      };
       var qs = [
         'action=' + encodeURIComponent(payload.action || ''),
         'args=' + encodeURIComponent(JSON.stringify(payload.args || [])),
@@ -360,29 +362,8 @@
     return sendNext();
   }
 
-  function formPost(payload, timeoutMs) {
+  function listenEmbedResult(id, iframe, extras, timeoutMs) {
     return new Promise(function (resolve, reject) {
-      var id = 'f' + (++callId) + '_' + Date.now();
-      var iframe = document.createElement('iframe');
-      iframe.name = 'gasForm_' + id;
-      iframe.setAttribute('aria-hidden', 'true');
-      iframe.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;opacity:0;border:0;';
-      var form = document.createElement('form');
-      form.method = 'POST';
-      form.action = getUrl();
-      form.target = iframe.name;
-      function field(name, value) {
-        var input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = name;
-        input.value = value == null ? '' : String(value);
-        form.appendChild(input);
-      }
-      field('action', payload.action || '');
-      field('args', JSON.stringify(payload.args || []));
-      if (payload.authPassword) field('authPassword', payload.authPassword);
-      field('embed', '1');
-      field('msgId', id);
       var settled = false;
       var timer = setTimeout(function () {
         finish(new Error('後端沒有回應。請把專案裡的 Code.gs 貼到 Apps Script，再部署「新版本」。'), true);
@@ -392,20 +373,22 @@
         settled = true;
         clearTimeout(timer);
         window.removeEventListener('message', onMsg);
-        // 先把成績回給畫面，稍後再拆 iframe，讓 Apps Script 連線能正常結束。
         setTimeout(function () {
-          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-          if (form.parentNode) form.parentNode.removeChild(form);
+          if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+          (extras || []).forEach(function (el) {
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+          });
         }, isReject ? 0 : 2000);
         if (isReject) reject(err);
+        else resolve(err);
       }
       function onMsg(e) {
         var msg = e && e.data;
         if (!msg || msg.type !== 'gas-form-result' || String(msg.id) !== id) return;
         if (msg.ok) {
           try {
-            finish(null, false);
-            resolve(unwrap(msg.result));
+            var data = unwrap(msg.result);
+            finish(data, false);
           } catch (err) {
             finish(err, true);
           }
@@ -414,9 +397,61 @@
         }
       }
       window.addEventListener('message', onMsg);
-      (document.body || document.documentElement).appendChild(iframe);
-      (document.body || document.documentElement).appendChild(form);
-      form.submit();
+    });
+  }
+
+  /** 用隱藏 iframe GET + embed 取資料，避開 JSONP 的 CORB。 */
+  function embedGet(payload, timeoutMs) {
+    var id = 'e' + (++callId) + '_' + Date.now();
+    var iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;opacity:0;border:0;';
+    var qs = [
+      'action=' + encodeURIComponent(payload.action || ''),
+      'args=' + encodeURIComponent(JSON.stringify(payload.args || [])),
+      'embed=1',
+      'msgId=' + encodeURIComponent(id)
+    ];
+    if (payload.authPassword) qs.push('authPassword=' + encodeURIComponent(payload.authPassword));
+    var pending = listenEmbedResult(id, iframe, [], timeoutMs);
+    iframe.src = getUrl() + '?' + qs.join('&') + '&_=' + Date.now();
+    (document.body || document.documentElement).appendChild(iframe);
+    return pending;
+  }
+
+  function formPost(payload, timeoutMs) {
+    var id = 'f' + (++callId) + '_' + Date.now();
+    var iframe = document.createElement('iframe');
+    iframe.name = 'gasForm_' + id;
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;opacity:0;border:0;';
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = getUrl();
+    form.target = iframe.name;
+    function field(name, value) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = value == null ? '' : String(value);
+      form.appendChild(input);
+    }
+    field('action', payload.action || '');
+    field('args', JSON.stringify(payload.args || []));
+    if (payload.authPassword) field('authPassword', payload.authPassword);
+    field('embed', '1');
+    field('msgId', id);
+    var pending = listenEmbedResult(id, iframe, [form], timeoutMs);
+    (document.body || document.documentElement).appendChild(iframe);
+    (document.body || document.documentElement).appendChild(form);
+    form.submit();
+    return pending;
+  }
+
+  function queryViaEmbed(payload, timeoutMs) {
+    var waitMs = timeoutMs || 60000;
+    return embedGet(payload, waitMs).catch(function () {
+      return formPost(payload, waitMs);
     });
   }
   var uploadChain = Promise.resolve();
@@ -495,12 +530,15 @@
       return uploadSinglePhotoFast(args[0], args[1]);
     }
     var payload = buildPayload(action, args);
-    // 查詢類改走隱藏 iframe POST，避免 JSONP 被 Chrome CORB 擋讀。
-    if (action === 'getSemesterStatistics' || action === 'getAllClassrooms' || action === 'getScoreRecords') {
-      var waitMs = apiTimeoutFor(action);
-      return formPost(payload, waitMs).catch(function () {
-        return jsonpGet(payload, waitMs);
-      });
+    // 查詢類走 iframe embed，不要退回 JSONP（Chrome CORB 會擋掉 callback）。
+    if (
+      action === 'getSemesterStatistics' ||
+      action === 'getAllClassrooms' ||
+      action === 'getScoreRecords' ||
+      action === 'getWeeklyStatistics' ||
+      action === 'getClassroomComparison'
+    ) {
+      return queryViaEmbed(payload, apiTimeoutFor(action));
     }
     return apiRequest(payload, apiTimeoutFor(action));
   }
