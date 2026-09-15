@@ -489,6 +489,13 @@
       return uploadSinglePhotoFast(args[0], args[1]);
     }
     var payload = buildPayload(action, args);
+    // 學期總成績改走隱藏 iframe POST，避免 JSONP 被 Chrome CORB 擋讀、重送兩次。
+    if (action === 'getSemesterStatistics') {
+      var waitMs = apiTimeoutFor(action);
+      return formPost(payload, waitMs).catch(function () {
+        return jsonpGet(payload, waitMs);
+      });
+    }
     return apiRequest(payload, apiTimeoutFor(action));
   }
 
