@@ -544,6 +544,7 @@
     field('action', payload.action || '');
     field('args', JSON.stringify(payload.args || []));
     if (payload.authPassword) field('authPassword', payload.authPassword);
+    field('kick', '1');
     (document.body || document.documentElement).appendChild(iframe);
     (document.body || document.documentElement).appendChild(form);
     form.submit();

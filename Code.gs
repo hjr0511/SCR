@@ -2830,6 +2830,7 @@ function handleApiRequest(e) {
   let callback = '';
   let embed = false;
   let msgId = '';
+  let kick = false;
   try {
     let request = {};
     if (e && e.parameter && e.parameter.callback) {
@@ -2838,6 +2839,7 @@ function handleApiRequest(e) {
     if (e && e.parameter) {
       embed = String(e.parameter.embed || '') === '1';
       msgId = String(e.parameter.msgId || '');
+      kick = String(e.parameter.kick || '') === '1';
     }
     if (e && e.postData && e.postData.contents) {
       try {
@@ -2878,8 +2880,17 @@ function handleApiRequest(e) {
     const args = Array.isArray(request.args) ? request.args : [];
     const authPassword = request.authPassword || '';
     const result = dispatchAction_(action, args, authPassword);
+    // 背景 kick：不要回 ContentService JSON（iframe 會 403），改回空白 Html 頁。
+    if (kick && !embed && !callback) {
+      return HtmlService.createHtmlOutput('<!doctype html><html><body></body></html>')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    }
     return jsonOutput_(result, callback, embed, msgId);
   } catch (error) {
+    if (kick && !embed && !callback) {
+      return HtmlService.createHtmlOutput('<!doctype html><html><body></body></html>')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    }
     return jsonOutput_({
       __exception: true,
       success: false,
