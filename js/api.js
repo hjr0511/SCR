@@ -379,7 +379,7 @@
           (extras || []).forEach(function (el) {
             if (el && el.parentNode) el.parentNode.removeChild(el);
           });
-        }, isReject ? 0 : 2000);
+        }, isReject ? 0 : 100);
         if (isReject) reject(err);
         else resolve(err);
       }

@@ -3218,11 +3218,12 @@ function jsonOutput_(data, callback, embed, msgId) {
       result: isErr ? null : data,
       message: isErr ? (data.message || '後端發生錯誤') : ''
     };
-    // 避開 </script> 等字元把回傳頁打斷，並多層 parent 送出結果。
+    // 用 ContentService 回傳極短 HTML，比 HtmlService 沙盒快很多。
     const safeJson = JSON.stringify(msg).replace(/</g, '\\u003c');
     const html = '<!doctype html><html><body><script>(function(){var m=' + safeJson + ';var w=[];function add(x){if(x&&w.indexOf(x)<0)w.push(x);}try{add(window.parent);add(window.top);add(window.parent&&window.parent.parent);add(window.parent&&window.parent.parent&&window.parent.parent.parent);}catch(e){}for(var i=0;i<w.length;i++){try{w[i].postMessage(m,"*");}catch(err){}}})();</script></body></html>';
-    return HtmlService.createHtmlOutput(html)
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    return ContentService
+      .createTextOutput(html)
+      .setMimeType(ContentService.MimeType.HTML);
   }
   if (callback) {
     const safeName = String(callback).replace(/[^A-Za-z0-9_$.]/g, '');
