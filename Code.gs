@@ -1159,11 +1159,49 @@ function getWeeklyHonorPdfConfig_() {
  * @return {Object} { success, message, docUrl, weekStart, weekEnd }
  */
 function exportWeeklyStatisticsPdf(weekStartDate) {
+  const config = getWeeklyHonorPdfConfig_();
+  const range = getWeekDateRange_(weekStartDate);
+  const weekStart = range.weekStart;
+  const weekEnd = range.weekEnd;
+  const tz = Session.getScriptTimeZone();
+  const weekKey = Utilities.formatDate(weekStart, tz, 'yyyy-MM-dd');
+  const cacheKey = 'honorPdf_v1_' + config.contestShort + '_' + weekKey;
+  const cache = CacheService.getScriptCache();
+
+  function readPdfCache_() {
+    try {
+      const raw = cache.get(cacheKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && parsed.success ? parsed : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  const hit = readPdfCache_();
+  if (hit) {
+    Logger.log('績優班級 PDF 使用快取：' + cacheKey);
+    return hit;
+  }
+
+  const lock = LockService.getScriptLock();
   try {
-    const config = getWeeklyHonorPdfConfig_();
-    const range = getWeekDateRange_(weekStartDate);
-    const weekStart = range.weekStart;
-    const weekEnd = range.weekEnd;
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return {
+      success: false,
+      message: '匯出忙碌中，請稍後再試'
+    };
+  }
+
+  try {
+    const hitAfterLock = readPdfCache_();
+    if (hitAfterLock) {
+      Logger.log('績優班級 PDF 使用快取：' + cacheKey);
+      return hitAfterLock;
+    }
+
     const gradeGroups = collectWeeklyGradeScores_(weekStart, weekEnd);
     const grades = ['一年級', '二年級', '三年級'];
     const rankedData = rankWeeklyGradeGroups_(gradeGroups, grades);
@@ -1194,17 +1232,20 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
     const fileId = pdfFile.getId();
     const docUrl = pdfFile.getUrl();
     const downloadUrl = 'https://drive.google.com/uc?export=download&id=' + fileId;
-    const tz = Session.getScriptTimeZone();
     Logger.log('績優班級 PDF 已建立：' + pdfName + ' ' + docUrl);
-    return {
+    const result = {
       success: true,
       message: '已產生每週排名 PDF',
       docUrl: docUrl,
       downloadUrl: downloadUrl,
       fileId: fileId,
-      weekStart: Utilities.formatDate(weekStart, tz, 'yyyy-MM-dd'),
+      weekStart: weekKey,
       weekEnd: Utilities.formatDate(weekEnd, tz, 'yyyy-MM-dd')
     };
+    try {
+      cache.put(cacheKey, JSON.stringify(result), 120);
+    } catch (cacheErr) {}
+    return result;
   } catch (error) {
     Logger.log('exportWeeklyStatisticsPdf 發生錯誤：' + error.toString());
     Logger.log('錯誤堆疊：' + (error.stack || '無堆疊資訊'));
@@ -1212,6 +1253,10 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
       success: false,
       message: '匯出每週排名 PDF 時發生錯誤：' + error.toString()
     };
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (releaseErr) {}
   }
 }
 

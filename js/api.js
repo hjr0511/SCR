@@ -521,26 +521,18 @@
     return false;
   }
 
-  // PDF 結果只有幾個網址，走 JSONP 即可，避開 iframe + postMessage
-  // （Google 會丟 unexpected window，前端往往比後端多等十幾秒）。
-  // 不重試，避免逾時後再產生一份 PDF。
+  // PDF 結果只有幾個網址，走 JSONP；不重試、不並行，避免 Apps Script 連打兩次。
+  var pdfExportInFlight = null;
   function exportPdfFast(payload) {
-    return jsonpGet(payload, apiTimeoutFor('exportWeeklyStatisticsPdf'));
-  }
-
-  function pingBackend() {
-    return jsonpGet(buildPayload('ping', []), 8000).catch(function () { return false; });
-  }
-
-  function startPdfQueryWarmup() {
-    if (!isConfigured()) return;
-    if (!document.getElementById('weeklyExportPdfBtn')) return;
-    pingBackend();
-    if (startPdfQueryWarmup.timer) return;
-    startPdfQueryWarmup.timer = setInterval(function () {
-      if (document.visibilityState === 'hidden') return;
-      pingBackend();
-    }, 45000);
+    if (pdfExportInFlight) return pdfExportInFlight;
+    pdfExportInFlight = jsonpGet(payload, apiTimeoutFor('exportWeeklyStatisticsPdf')).then(function (result) {
+      pdfExportInFlight = null;
+      return result;
+    }, function (err) {
+      pdfExportInFlight = null;
+      throw err;
+    });
+    return pdfExportInFlight;
   }
 
   function callApi(action, args) {
@@ -669,7 +661,6 @@
 
   function boot() {
     if (!isConfigured()) showConfigError();
-    else startPdfQueryWarmup();
   }
   if (document.body) boot();
   else document.addEventListener('DOMContentLoaded', boot);
