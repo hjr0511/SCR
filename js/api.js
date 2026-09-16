@@ -521,10 +521,11 @@
     return false;
   }
 
-  // GitHub Pages 對 Apps Script bridge 做 postMessage 會被 Google 丟掉。
-  // PDF 改走獨立 iframe embed（結果頁回傳給本頁），與查詢週統計同一條路。
+  // PDF 結果只有幾個網址，走 JSONP 即可，避開 iframe + postMessage
+  // （Google 會丟 unexpected window，前端往往比後端多等十幾秒）。
+  // 不重試，避免逾時後再產生一份 PDF。
   function exportPdfFast(payload) {
-    return embedGet(payload, apiTimeoutFor('exportWeeklyStatisticsPdf'));
+    return jsonpGet(payload, apiTimeoutFor('exportWeeklyStatisticsPdf'));
   }
 
   function pingBackend() {
