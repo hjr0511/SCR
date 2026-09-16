@@ -288,7 +288,7 @@
     if (action === 'getSemesterStatistics') return 90000;
     if (action === 'uploadPhotoChunk') return 20000;
     if (action === 'finalizePhotoUpload' || action === 'uploadSinglePhoto') return 40000;
-    if (action === 'exportWeeklyStatisticsPdf') return 45000;
+    if (action === 'exportWeeklyStatisticsPdf') return 60000;
     return 60000;
   }
 
@@ -521,28 +521,19 @@
     return false;
   }
 
-  // PDF 結果很小；優先走已預熱的 bridge（google.script.run），
-  // 回傳不必再等 JSONP / form iframe 的轉址，前端時間才會接近後端執行時間。
+  // GitHub Pages 對 Apps Script bridge 做 postMessage 會被 Google 丟掉。
+  // PDF 改走獨立 iframe embed（結果頁回傳給本頁），與查詢週統計同一條路。
   function exportPdfFast(payload) {
-    var waitMs = apiTimeoutFor('exportWeeklyStatisticsPdf');
-    if (iframeReady && iframe && iframe.contentWindow) {
-      return postCall(payload.action, payload.args, waitMs);
-    }
-    if (isConfigured()) ensureIframe();
-    return jsonpGet(payload, waitMs);
+    return embedGet(payload, apiTimeoutFor('exportWeeklyStatisticsPdf'));
   }
 
   function pingBackend() {
-    if (iframeReady && iframe && iframe.contentWindow) {
-      return postCall('ping', [], 8000).catch(function () { return false; });
-    }
     return jsonpGet(buildPayload('ping', []), 8000).catch(function () { return false; });
   }
 
   function startPdfQueryWarmup() {
     if (!isConfigured()) return;
     if (!document.getElementById('weeklyExportPdfBtn')) return;
-    ensureIframe();
     pingBackend();
     if (startPdfQueryWarmup.timer) return;
     startPdfQueryWarmup.timer = setInterval(function () {
