@@ -1400,7 +1400,7 @@ function getWeeklyHonorPdfConfig_() {
  * @param {string} weekStartDate 週開始日期 (yyyy-MM-dd，選填，空白=本週)
  * @return {Object} { success, message, docUrl, weekStart, weekEnd }
  */
-function exportWeeklyStatisticsPdf(weekStartDate) {
+function exportWeeklyStatisticsPdf(weekStartDate, jobId) {
   const config = getWeeklyHonorPdfConfig_();
   const range = getWeekDateRange_(weekStartDate);
   const weekStart = range.weekStart;
@@ -1408,7 +1408,15 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
   const tz = Session.getScriptTimeZone();
   const weekKey = Utilities.formatDate(weekStart, tz, 'yyyy-MM-dd');
   const cacheKey = 'honorPdf_v1_' + config.contestShort + '_' + weekKey;
+  const jobKey = jobId ? ('pdfJob_' + String(jobId)) : '';
   const cache = CacheService.getScriptCache();
+
+  function writeJob_(obj) {
+    if (!jobKey) return;
+    try {
+      cache.put(jobKey, JSON.stringify(obj), 180);
+    } catch (err) {}
+  }
 
   function readPdfCache_() {
     try {
@@ -1421,9 +1429,12 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
     }
   }
 
+  writeJob_({ success: false, pending: true });
+
   const hit = readPdfCache_();
   if (hit) {
     Logger.log('績優班級 PDF 使用快取：' + cacheKey);
+    writeJob_(hit);
     return hit;
   }
 
@@ -1431,16 +1442,20 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
   try {
     lock.waitLock(30000);
   } catch (lockErr) {
-    return {
+    const busy = {
       success: false,
+      pending: false,
       message: '匯出忙碌中，請稍後再試'
     };
+    writeJob_(busy);
+    return busy;
   }
 
   try {
     const hitAfterLock = readPdfCache_();
     if (hitAfterLock) {
       Logger.log('績優班級 PDF 使用快取：' + cacheKey);
+      writeJob_(hitAfterLock);
       return hitAfterLock;
     }
 
@@ -1477,6 +1492,7 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
     Logger.log('績優班級 PDF 已建立：' + pdfName + ' ' + docUrl);
     const result = {
       success: true,
+      pending: false,
       message: '已產生每週排名 PDF',
       docUrl: docUrl,
       downloadUrl: downloadUrl,
@@ -1487,18 +1503,33 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
     try {
       cache.put(cacheKey, JSON.stringify(result), 120);
     } catch (cacheErr) {}
+    writeJob_(result);
     return result;
   } catch (error) {
     Logger.log('exportWeeklyStatisticsPdf 發生錯誤：' + error.toString());
     Logger.log('錯誤堆疊：' + (error.stack || '無堆疊資訊'));
-    return {
+    const fail = {
       success: false,
+      pending: false,
       message: '匯出每週排名 PDF 時發生錯誤：' + error.toString()
     };
+    writeJob_(fail);
+    return fail;
   } finally {
     try {
       lock.releaseLock();
     } catch (releaseErr) {}
+  }
+}
+
+function peekWeeklyHonorPdf(jobId) {
+  if (!jobId) return { success: false, pending: true };
+  try {
+    const raw = CacheService.getScriptCache().get('pdfJob_' + String(jobId));
+    if (!raw) return { success: false, pending: true };
+    return JSON.parse(raw);
+  } catch (err) {
+    return { success: false, pending: true };
   }
 }
 
@@ -3375,7 +3406,9 @@ function dispatchAction_(action, args, authPassword) {
     case 'exportWeeklyStatisticsCsv':
       return exportWeeklyStatisticsCsv(args[0]);
     case 'exportWeeklyStatisticsPdf':
-      return exportWeeklyStatisticsPdf(args[0]);
+      return exportWeeklyStatisticsPdf(args[0], args[1]);
+    case 'peekWeeklyHonorPdf':
+      return peekWeeklyHonorPdf(args[0]);
     case 'exportWeeklyStatisticsToSheet':
       return exportWeeklyStatisticsToSheet(args[0]);
     case 'getSemesterStatistics':

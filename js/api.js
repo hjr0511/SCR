@@ -521,12 +521,66 @@
     return false;
   }
 
-  // PDF 用 POST（與上傳相同），不要用 JSONP GET。
-  // Apps Script 對 GET 常會出現兩筆 doGet；POST 通常只有一筆 doPost。
+  // PDF：POST 背景產檔（不重等 HtmlService），再用 JSONP 輪詢結果。
+  // 前端等待時間會接近後端產檔時間，而不是再多等十秒回傳頁。
   var pdfExportInFlight = null;
+  function fireAndForgetPost_(payload) {
+    var id = 'k' + (++callId) + '_' + Date.now();
+    var iframe = document.createElement('iframe');
+    iframe.name = 'gasKick_' + id;
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;opacity:0;border:0;';
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = getUrl();
+    form.target = iframe.name;
+    function field(name, value) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = value == null ? '' : String(value);
+      form.appendChild(input);
+    }
+    field('action', payload.action || '');
+    field('args', JSON.stringify(payload.args || []));
+    if (payload.authPassword) field('authPassword', payload.authPassword);
+    (document.body || document.documentElement).appendChild(iframe);
+    (document.body || document.documentElement).appendChild(form);
+    form.submit();
+    setTimeout(function () {
+      if (form.parentNode) form.parentNode.removeChild(form);
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    }, 120000);
+  }
+
+  function pollPdfJob_(jobId) {
+    var started = Date.now();
+    function once() {
+      return jsonpGet(buildPayload('peekWeeklyHonorPdf', [jobId]), 12000).then(function (r) {
+        if (r && r.success && (r.docUrl || r.downloadUrl || r.fileId)) return r;
+        if (r && r.success === false && r.pending === false && r.message) {
+          throw new Error(r.message);
+        }
+        if (Date.now() - started > 90000) {
+          throw new Error('匯出逾時，請再試一次');
+        }
+        return delay(450).then(once);
+      }, function () {
+        if (Date.now() - started > 90000) {
+          throw new Error('匯出逾時，請再試一次');
+        }
+        return delay(700).then(once);
+      });
+    }
+    return delay(350).then(once);
+  }
+
   function exportPdfFast(payload) {
     if (pdfExportInFlight) return pdfExportInFlight;
-    pdfExportInFlight = formPost(payload, apiTimeoutFor('exportWeeklyStatisticsPdf')).then(function (result) {
+    var weekDate = (payload.args && payload.args.length) ? payload.args[0] : null;
+    var jobId = 'pdf' + Date.now() + '_' + (++callId);
+    fireAndForgetPost_(buildPayload('exportWeeklyStatisticsPdf', [weekDate, jobId]));
+    pdfExportInFlight = pollPdfJob_(jobId).then(function (result) {
       pdfExportInFlight = null;
       return result;
     }, function (err) {
