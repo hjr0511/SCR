@@ -985,7 +985,7 @@
   </div>
 
   <script src="js/config-order.js"></script>
-  <script src="js/api.js?v=20260916pdf9"></script>
+  <script src="js/api.js?v=20260916fix1"></script>
   <script>
     let allClassrooms = [];
     let classroomNetworkStarted = false;
@@ -2051,11 +2051,10 @@
     }
 
     function exportWeeklyStatisticsToCsv() {
+      const weekSelect = document.getElementById('weekSelect');
+      const weekDate = weekSelect ? weekSelect.value : '';
+      const weeklyExportBtn = document.getElementById('weeklyExportBtn');
       try {
-        const weekSelect = document.getElementById('weekSelect');
-        const weekDate = weekSelect ? weekSelect.value : '';
-        const weeklyExportBtn = document.getElementById('weeklyExportBtn');
-        
         if (weeklyExportBtn) weeklyExportBtn.disabled = true;
         showMessage('匯出每週排名 CSV 中...', 'info');
         
@@ -2087,11 +2086,7 @@
               document.body.removeChild(a);
               URL.revokeObjectURL(url);
               
-              let doneMsg = 'CSV 檔案下載完成';
-              if (result.sheetName) {
-                doneMsg += '，並已在試算表新增分頁「' + result.sheetName + '」';
-              }
-              showMessage(doneMsg, 'success');
+              showMessage('CSV 檔案下載完成', 'success');
             } catch (err) {
               console.error('下載 CSV 時發生錯誤：', err);
               showMessage('下載 CSV 檔時發生錯誤：' + (err.message || err.toString()), 'error');
@@ -2103,6 +2098,7 @@
           })
           .exportWeeklyStatisticsCsv(weekDate || null);
       } catch (err) {
+        if (weeklyExportBtn) weeklyExportBtn.disabled = false;
         showMessage('匯出每週排名 CSV 時發生錯誤：' + (err.message || err.toString()), 'error');
       }
     }
@@ -2111,11 +2107,10 @@
     let weeklyPdfExporting = false;
     function exportWeeklyStatisticsToPdf() {
       if (weeklyPdfExporting) return;
+      const weekSelect = document.getElementById('weekSelect');
+      const weekDate = weekSelect ? weekSelect.value : '';
+      const weeklyExportPdfBtn = document.getElementById('weeklyExportPdfBtn');
       try {
-        const weekSelect = document.getElementById('weekSelect');
-        const weekDate = weekSelect ? weekSelect.value : '';
-        const weeklyExportPdfBtn = document.getElementById('weeklyExportPdfBtn');
-        
         weeklyPdfExporting = true;
         if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = true;
         showMessage('匯出每週排名 PDF 中...', 'info');

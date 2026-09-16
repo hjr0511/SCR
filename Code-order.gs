@@ -835,6 +835,7 @@ function saveScore(scoreData, authPassword) {
     if (!replaced) {
       sheet.appendRow(newRow);
     }
+    invalidateHonorPdfCacheForDate_(now);
     
     return {
       success: true,
@@ -1393,11 +1394,30 @@ function getWeeklyHonorPdfConfig_() {
 }
 
 /**
+ * 評分寫入後清除該週績優 PDF 快取，避免匯出到舊檔。
+ */
+function invalidateHonorPdfCacheForDate_(dateObj) {
+  try {
+    const d = dateObj instanceof Date ? new Date(dateObj.getTime()) : new Date(dateObj);
+    if (isNaN(d.getTime())) return;
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const weekStart = new Date(d);
+    weekStart.setDate(d.getDate() + diff);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekKey = Utilities.formatDate(weekStart, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    const contest = getWeeklyHonorPdfConfig_().contestShort;
+    CacheService.getScriptCache().remove('honorPdf_v1_' + contest + '_' + weekKey);
+  } catch (err) {}
+}
+
+/**
  * 匯出每週排名報表為官方「績優班級」單頁 PDF
  * 版面比照學務處紙本：標題在框線內、高一／高二／高三並排、
  * 空白年級斜線、附記與承辦人／學務主任／校長簽核欄。
  *
  * @param {string} weekStartDate 週開始日期 (yyyy-MM-dd，選填，空白=本週)
+ * @param {string} jobId 前端輪詢用工作代號（選填）
  * @return {Object} { success, message, docUrl, weekStart, weekEnd }
  */
 function exportWeeklyStatisticsPdf(weekStartDate, jobId) {
@@ -2483,19 +2503,6 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       weekStart: Utilities.formatDate(weekStart, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
       weekEnd: Utilities.formatDate(weekEnd, Session.getScriptTimeZone(), 'yyyy-MM-dd')
     };
-
-    // 同時在試算表新增／更新「每週排名_YYYYMMDD」分頁
-    try {
-      const sheetResult = exportWeeklyStatisticsToSheet(weekLabel);
-      if (sheetResult && sheetResult.success) {
-        result.sheetName = sheetResult.sheetName;
-        result.message = '已產生每週排名 CSV，並新增工作表「' + sheetResult.sheetName + '」';
-      } else if (sheetResult && sheetResult.message) {
-        result.sheetMessage = sheetResult.message;
-      }
-    } catch (sheetErr) {
-      result.sheetMessage = sheetErr.toString();
-    }
 
     return result;
   } catch (error) {
