@@ -1094,8 +1094,8 @@
       if (savedType && filtered.indexOf(savedType) !== -1) {
         hiddenInput.value = savedType;
         modalSelect.value = savedType;
-        updateGradeFieldVisibility(savedType);
       }
+      syncEvaluatorTypeForLogin();
       if (!modalSelect.dataset.gradeVisBound) {
         modalSelect.dataset.gradeVisBound = '1';
         modalSelect.addEventListener('change', function() {
@@ -1131,7 +1131,38 @@
         document.getElementById('timeSlot').value = savedTimeSlot;
         document.getElementById('modalTimeSlot').value = savedTimeSlot;
       }
-      updateGradeFieldVisibility(savedType || document.getElementById('evaluatorType').value);
+      if (isStudentLogin || isTeacherLogin || isAdminLogin) {
+        syncEvaluatorTypeForLogin();
+      } else {
+        updateGradeFieldVisibility(savedType || document.getElementById('evaluatorType').value);
+      }
+    }
+
+    function syncEvaluatorTypeForLogin() {
+      const hiddenInput = document.getElementById('evaluatorType');
+      const modalSelect = document.getElementById('modalEvaluatorType');
+      let type = (hiddenInput && hiddenInput.value) || localStorage.getItem(STORAGE_KEYS.EVALUATOR_TYPE) || '';
+      if (isAdminLogin) {
+        type = '衛生組';
+      } else if (isTeacherLogin) {
+        if (type.indexOf('評分教師') < 0 && type.indexOf('巡堂老師') < 0) {
+          type = '評分教師';
+        }
+      } else if (isStudentLogin) {
+        if (type.indexOf('衛生股長') < 0 && type.indexOf('衛生服務隊') < 0) {
+          type = '衛生股長';
+        }
+      }
+      if (hiddenInput) hiddenInput.value = type;
+      if (modalSelect) {
+        const hasOption = Array.prototype.some.call(modalSelect.options, function(opt) {
+          return opt.value === type;
+        });
+        if (hasOption) modalSelect.value = type;
+      }
+      try { localStorage.setItem(STORAGE_KEYS.EVALUATOR_TYPE, type); } catch (e) {}
+      updateGradeFieldVisibility(type);
+      return type;
     }
     
     // 根據評分人員類型更新評分人員年級欄位的顯示
@@ -1148,7 +1179,7 @@
       // 學生必須選年級；老師／衛生組隱藏且不必填
       const gradeNeeded = isEvaluatorGradeRequired(evaluatorType);
       // 檢查是否為衛生組（只有衛生組可以加分）
-      const isHealthGroup = evaluatorType && evaluatorType.includes('衛生組');
+      const isHealthGroup = isAdminLogin || (evaluatorType && evaluatorType.indexOf('衛生組') >= 0);
       
       if (!gradeNeeded) {
         if (gradeGroup) gradeGroup.style.display = 'none';
@@ -1329,16 +1360,16 @@
           isTeacherLogin = false;
           isAdminLogin = true;
           
-          // 衛生組登入：年級非必填，可評所有教室
+          // 衛生組登入：立刻設為衛生組並開放加分（不要沿用老師的「評分教師」）
           setTimeout(function() {
             filterEvaluatorTypesForStudent();
-            const currentType = document.getElementById('evaluatorType').value || '';
-            updateGradeFieldVisibility(currentType);
+            const currentType = syncEvaluatorTypeForLogin();
             if (!isEvaluatorGradeRequired(currentType)) {
               document.getElementById('evaluatorGrade').value = '';
               loadAllClassrooms();
             }
-          }, 1500);
+            showMessage('已自動設定為衛生組，可以使用加分', 'success');
+          }, 400);
         }
       } catch (error) {
         console.error('檢查登入類型時發生錯誤：', error);
@@ -1749,6 +1780,8 @@
       localStorage.setItem(STORAGE_KEYS.EVALUATOR, evaluator);
       localStorage.setItem(STORAGE_KEYS.AREA, area);
       localStorage.setItem(STORAGE_KEYS.TIME_SLOT, timeSlot);
+      
+      updateGradeFieldVisibility(type);
       
       // 關閉 modal
       closeSettingsModal();
@@ -2306,7 +2339,9 @@
       google.script.run
         .withSuccessHandler(function(result) {
           if (result.success) {
-            let message = '評分記錄已成功儲存！';
+            let message = result.replaced
+              ? '已覆蓋您今天稍早對本班的評分（其他老師的分數不受影響）'
+              : '評分記錄已成功儲存！';
             if (photoLinksCount > 0) {
               message += ' 成功上傳 ' + photoLinksCount + ' 張照片';
             } else if (expectedPhotoCount > 0) {
