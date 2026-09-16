@@ -1403,14 +1403,6 @@ function getWeeklyHonorPdfConfig_() {
 function exportWeeklyStatisticsPdf(weekStartDate) {
   try {
     const config = getWeeklyHonorPdfConfig_();
-    const weekly = getWeeklyStatistics(weekStartDate);
-    if (!weekly || weekly.error || weekly.success === false) {
-      return {
-        success: false,
-        message: '無法取得每週統計資料：' + (weekly && weekly.error ? weekly.error : '未知錯誤')
-      };
-    }
-
     const range = getWeekDateRange_(weekStartDate);
     const weekStart = range.weekStart;
     const weekEnd = range.weekEnd;
@@ -1421,7 +1413,6 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
     const meta = getHonorWeekMeta_(weekStart);
 
     const pdfName = meta.schoolYear + '-' + meta.semester + '_第' + meta.weekNum + '週' + config.contestShort + '績優班級.pdf';
-    trashDriveFilesByName_(pdfName);
 
     let pdfFile;
     try {
@@ -1445,6 +1436,7 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
     const fileId = pdfFile.getId();
     const docUrl = pdfFile.getUrl();
     const downloadUrl = 'https://drive.google.com/uc?export=download&id=' + fileId;
+    const tz = Session.getScriptTimeZone();
     Logger.log('績優班級 PDF 已建立：' + pdfName + ' ' + docUrl);
     return {
       success: true,
@@ -1452,8 +1444,8 @@ function exportWeeklyStatisticsPdf(weekStartDate) {
       docUrl: docUrl,
       downloadUrl: downloadUrl,
       fileId: fileId,
-      weekStart: weekly.weekStart,
-      weekEnd: weekly.weekEnd
+      weekStart: Utilities.formatDate(weekStart, tz, 'yyyy-MM-dd'),
+      weekEnd: Utilities.formatDate(weekEnd, tz, 'yyyy-MM-dd')
     };
   } catch (error) {
     Logger.log('exportWeeklyStatisticsPdf 發生錯誤：' + error.toString());
@@ -1841,7 +1833,6 @@ function applyHonorDocFont_(doc) {
   body.setMarginBottom(40);
   body.setMarginLeft(24);
   body.setMarginRight(24);
-
   applyHonorKaiFontToText_(body.editAsText());
 
   try {
@@ -1878,41 +1869,16 @@ function applyHonorDocFont_(doc) {
           sixColRow.getCell(c).setWidth(widths[c]);
         } catch (wErr) {}
       }
-    } else if (table.getRow(0).getNumCells() > 6) {
-      table.setBorderWidth(0);
-    }
-
-    for (let r = 0; r < table.getNumRows(); r++) {
-      const row = table.getRow(r);
-      if (sixColRow || table.getNumRows() > 4) {
+      const n = table.getNumRows();
+      for (let r = 0; r < n; r++) {
+        const row = table.getRow(r);
         if (r === 0) row.setMinimumHeight(36);
         else if (r === 1) row.setMinimumHeight(32);
         else if (r <= 3) row.setMinimumHeight(28);
         else row.setMinimumHeight(26);
       }
-      for (let c = 0; c < row.getNumCells(); c++) {
-        const cell = row.getCell(c);
-        try {
-          cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
-          cell.setPaddingTop(3);
-          cell.setPaddingBottom(3);
-          cell.setPaddingLeft(3);
-          cell.setPaddingRight(3);
-        } catch (padErr) {}
-        try {
-          applyHonorKaiFontToText_(cell.editAsText());
-          const paras = cell.getNumChildren ? cell.getNumChildren() : 0;
-          for (let p = 0; p < paras; p++) {
-            const child = cell.getChild(p);
-            if (child.getType && child.getType() === DocumentApp.ElementType.PARAGRAPH) {
-              const para = child.asParagraph();
-              para.setSpacingBefore(0);
-              para.setSpacingAfter(0);
-              para.setLineSpacing(1);
-            }
-          }
-        } catch (cellErr) {}
-      }
+    } else if (table.getRow(0).getNumCells() > 6) {
+      table.setBorderWidth(0);
     }
   }
 }
@@ -1928,12 +1894,13 @@ function exportHonorHtmlToPdfFile_(html, filename) {
     JSON.stringify(metadata) + delim +
     'Content-Type: text/html; charset=UTF-8\r\n\r\n' +
     html + close;
+  const token = ScriptApp.getOAuthToken();
   const createResp = UrlFetchApp.fetch(
     'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
     {
       method: 'post',
       contentType: 'multipart/related; boundary="' + boundary + '"',
-      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      headers: { Authorization: 'Bearer ' + token },
       payload: payload,
       muteHttpExceptions: true
     }
@@ -1950,11 +1917,10 @@ function exportHonorHtmlToPdfFile_(html, filename) {
     const doc = DocumentApp.openById(docId);
     applyHonorDocFont_(doc);
     doc.saveAndClose();
-    Utilities.sleep(1200);
     const pdfResp = UrlFetchApp.fetch(
-      'https://docs.google.com/document/d/' + docId + '/export?format=pdf',
+      'https://www.googleapis.com/drive/v3/files/' + docId + '/export?mimeType=application/pdf',
       {
-        headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+        headers: { Authorization: 'Bearer ' + token },
         muteHttpExceptions: true
       }
     );
