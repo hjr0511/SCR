@@ -985,7 +985,7 @@
   </div>
 
   <script src="js/config-order.js"></script>
-  <script src="js/api.js?v=20260916pdf5"></script>
+  <script src="js/api.js?v=20260916pdf6"></script>
   <script>
     let allClassrooms = [];
     let classroomNetworkStarted = false;
@@ -2108,17 +2108,21 @@
     }
 
     // 匯出每週排名為 PDF（在後端產生匯出連結，再由瀏覽器開啟）
+    let weeklyPdfExporting = false;
     function exportWeeklyStatisticsToPdf() {
+      if (weeklyPdfExporting) return;
       try {
         const weekSelect = document.getElementById('weekSelect');
         const weekDate = weekSelect ? weekSelect.value : '';
         const weeklyExportPdfBtn = document.getElementById('weeklyExportPdfBtn');
         
+        weeklyPdfExporting = true;
         if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = true;
         showMessage('匯出每週排名 PDF 中...', 'info');
         
         google.script.run
           .withSuccessHandler(function(result) {
+            weeklyPdfExporting = false;
             if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = false;
             
             if (!result || !result.success) {
@@ -2135,6 +2139,7 @@
             showWeeklyPdfReady(result);
           })
           .withFailureHandler(function(error) {
+            weeklyPdfExporting = false;
             if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = false;
             console.error('匯出失敗（FailureHandler）：', error);
             const errorMsg = error && error.message ? error.message : (error.toString ? error.toString() : '未知錯誤');
@@ -2143,6 +2148,7 @@
           })
           .exportWeeklyStatisticsPdf(weekDate || null);
       } catch (err) {
+        weeklyPdfExporting = false;
         console.error('匯出函式執行時發生錯誤：', err);
         if (weeklyExportPdfBtn) weeklyExportPdfBtn.disabled = false;
         showMessage('匯出每週排名 PDF 時發生錯誤：' + (err.message || err.toString()), 'error');

@@ -521,11 +521,12 @@
     return false;
   }
 
-  // PDF 結果只有幾個網址，走 JSONP；不重試、不並行，避免 Apps Script 連打兩次。
+  // PDF 用 POST（與上傳相同），不要用 JSONP GET。
+  // Apps Script 對 GET 常會出現兩筆 doGet；POST 通常只有一筆 doPost。
   var pdfExportInFlight = null;
   function exportPdfFast(payload) {
     if (pdfExportInFlight) return pdfExportInFlight;
-    pdfExportInFlight = jsonpGet(payload, apiTimeoutFor('exportWeeklyStatisticsPdf')).then(function (result) {
+    pdfExportInFlight = formPost(payload, apiTimeoutFor('exportWeeklyStatisticsPdf')).then(function (result) {
       pdfExportInFlight = null;
       return result;
     }, function (err) {
