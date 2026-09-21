@@ -1244,10 +1244,8 @@ function getWeeklyStatistics(weekStartDate) {
       // 特優：名次 <= 3 的所有班級（可能超過3個，因為同分並列）
       const top3 = rankedClassrooms.filter(c => c.rank <= 3);
       
-      // 優等：從名次 >= 4 開始往後取「最多三個班級」
-      // 說明：不再侷限在 4~6 名，避免出現只抓到 1 名的情況
-      const excellentCandidates = rankedClassrooms.filter(c => c.rank >= 4);
-      const excellent3 = excellentCandidates.slice(0, 3);
+      // 優勝：名次 >= 4 起取約 3 名，同分增額
+      const excellent3 = pickHonorExcellentWithTies_(rankedClassrooms);
       
       // 待改進：最後「三個位置」往後擴展，將同分者一起納入
       let bottom3 = [];
@@ -1407,7 +1405,7 @@ function invalidateHonorPdfCacheForDate_(dateObj) {
     weekStart.setHours(0, 0, 0, 0);
     const weekKey = Utilities.formatDate(weekStart, Session.getScriptTimeZone(), 'yyyy-MM-dd');
     const contest = getWeeklyHonorPdfConfig_().contestShort;
-    CacheService.getScriptCache().remove('honorPdf_v1_' + contest + '_' + weekKey);
+    CacheService.getScriptCache().remove('honorPdf_v6_' + contest + '_' + weekKey);
   } catch (err) {}
 }
 
@@ -1427,7 +1425,7 @@ function exportWeeklyStatisticsPdf(weekStartDate, jobId) {
   const weekEnd = range.weekEnd;
   const tz = Session.getScriptTimeZone();
   const weekKey = Utilities.formatDate(weekStart, tz, 'yyyy-MM-dd');
-  const cacheKey = 'honorPdf_v1_' + config.contestShort + '_' + weekKey;
+  const cacheKey = 'honorPdf_v6_' + config.contestShort + '_' + weekKey;
   const jobKey = jobId ? ('pdfJob_' + String(jobId)) : '';
   const cache = CacheService.getScriptCache();
 
@@ -1691,6 +1689,16 @@ function applyAwardRanks_(classrooms) {
   });
 }
 
+/**
+ * 優勝／優等：名次 >= 4 起取約 3 名；若第 3 名同分，全部列入（增額授獎）。
+ */
+function pickHonorExcellentWithTies_(rankedList) {
+  const candidates = (rankedList || []).filter(function(c) { return c.rank >= 4; });
+  if (candidates.length <= 3) return candidates.slice();
+  const cutoffScore = candidates[2].totalScore;
+  return candidates.filter(function(c) { return c.totalScore >= cutoffScore; });
+}
+
 function buildHonorAwardLists_(rankedData, grades, config) {
   const lists = {};
   grades.forEach(function(grade) {
@@ -1780,7 +1788,7 @@ function formatHonorClassName_(name) {
 }
 
 function formatHonorSubtitleRaw_(meta) {
-  return String(meta.schoolYear) + '學年度第' + meta.semester + '學期' +
+  return String(meta.schoolYear) + '學年度第' + meta.semester + '學期第' +
     meta.weekNum + '週(' + meta.dateRange + ')';
 }
 
@@ -1810,18 +1818,87 @@ function honorFormSheetFont_() {
 }
 
 /**
- * Google 試算表把 DFKai-SB 換成細明體。改由 Google 文件以「標楷體」匯出，
- * 外觀才接近學務處紙本。
+ * Google 雲端不能嵌入 Windows 標楷體（DFKai-SB）。
+ * PDF 改用可嵌入的楷書：Iansui（芫荽，從標楷體改作）或 cwTeXKai，
+ * 再退回 Google 文件內建「標楷體」。不要用 KaiTi，匯出會變成 MS-PGothic。
  */
 function honorFormPdfFont_() {
   return '標楷體';
 }
 
+function honorKaiFontNames_() {
+  return ['Iansui', 'cwTeXKai', '標楷體'];
+}
+
+function honorKaiCssStack_() {
+  return 'Iansui,cwTeXKai,標楷體,DFKai-SB,BiauKai,serif';
+}
+
 function applyHonorKaiFontToText_(text) {
   if (!text) return;
+  const names = honorKaiFontNames_();
+  for (let i = 0; i < names.length; i++) {
+    try {
+      text.setFontFamily(names[i]);
+      const got = text.getFontFamily();
+      if (got && String(got).toLowerCase().indexOf(names[i].toLowerCase()) >= 0) {
+        return names[i];
+      }
+    } catch (err) {}
+  }
   try {
-    text.setFontFamily('KaiTi');
-  } catch (err) {}
+    text.setFontFamily(honorFormPdfFont_());
+  } catch (err2) {}
+}
+
+function applyHonorKaiFontToDoc_(doc) {
+  const body = doc.getBody();
+  try {
+    const attrs = {};
+    attrs[DocumentApp.Attribute.FONT_FAMILY] = honorFormPdfFont_();
+    body.setAttributes(attrs);
+  } catch (attrErr) {}
+  applyHonorKaiFontToText_(body.editAsText());
+  const tables = body.getTables();
+  for (let t = 0; t < tables.length; t++) {
+    const table = tables[t];
+    for (let r = 0; r < table.getNumRows(); r++) {
+      const row = table.getRow(r);
+      for (let c = 0; c < row.getNumCells(); c++) {
+        try {
+          applyHonorKaiFontToText_(row.getCell(c).editAsText());
+        } catch (cellErr) {}
+      }
+    }
+  }
+}
+
+/** 附記內文統一字級與一般字重，避免各段大小不一 */
+function normalizeHonorNotesStyle_(body) {
+  const tables = body.getTables();
+  for (let t = 0; t < tables.length; t++) {
+    const table = tables[t];
+    for (let r = 0; r < table.getNumRows(); r++) {
+      const cell = table.getRow(r).getCell(0);
+      const text = cell.getText();
+      if (text.indexOf('一、') < 0 && text.indexOf('每週') < 0) continue;
+      if (text.replace(/\s/g, '') === '附記') continue;
+      try {
+        const edit = cell.editAsText();
+        const len = edit.getText().length;
+        if (len <= 0) continue;
+        edit.setBold(0, len - 1, false);
+        edit.setFontSize(0, len - 1, 14);
+        const names = honorKaiFontNames_();
+        for (let i = 0; i < names.length; i++) {
+          try {
+            edit.setFontFamily(0, len - 1, names[i]);
+            break;
+          } catch (fontErr) {}
+        }
+      } catch (styleErr) {}
+    }
+  }
 }
 
 function escapeHonorHtml_(text) {
@@ -1843,18 +1920,136 @@ function honorLabelHtml_(label) {
 }
 
 function honorCellStyle_(extra) {
-  return 'border:1px solid #000;font-family:標楷體,DFKai-SB,KaiTi,serif;' +
+  return 'border:1px solid #000;font-family:' + honorKaiCssStack_() + ';' +
     'text-align:center;vertical-align:middle;' + (extra || '');
 }
 
+/** 拆成「三、 」與後文，方便續行與「每」切齊 */
+function splitHonorNotePrefix_(line) {
+  const m = String(line || '').match(/^([一二三四五六七八九十]+、\s*)([\s\S]*)$/);
+  if (!m) return { prefix: '', body: String(line || '') };
+  return { prefix: m[1], body: m[2] };
+}
+
+/** 與「三、 」同寬的空白，讓下一行跟「每」切齊 */
+function honorNoteHangingIndentText_(prefix) {
+  let s = '';
+  for (let i = 0; i < prefix.length; i++) {
+    s += prefix.charAt(i) === ' ' ? ' ' : '　';
+  }
+  return s;
+}
+
+function honorNoteHangingIndentHtml_(prefix) {
+  let s = '';
+  for (let i = 0; i < prefix.length; i++) {
+    s += prefix.charAt(i) === ' ' ? '&nbsp;' : '&#12288;';
+  }
+  return s;
+}
+
+/**
+ * 附記 3 過長時，用「召集」後的空位放下「受獎班級」，
+ * 下一行用與「三、 」同寬的空白對齊「每」。
+ * HTML 空白改用實體，避免 br 後面的縮排被吃掉。
+ */
+function wrapHonorNoteAfterAwardClasses_(line, html) {
+  const parts = splitHonorNotePrefix_(line);
+  const marker = '受獎班級';
+  if (!parts.prefix || parts.body.indexOf(marker) < 0) {
+    return html ? escapeHonorHtml_(line) : line;
+  }
+  const idx = parts.body.indexOf(marker) + marker.length;
+  const first = parts.prefix + parts.body.substring(0, idx);
+  const rest = parts.body.substring(idx);
+  if (html) {
+    return escapeHonorHtml_(first) + '<br>' + honorNoteHangingIndentHtml_(parts.prefix) +
+      escapeHonorHtml_(rest);
+  }
+  return first + '\n' + honorNoteHangingIndentText_(parts.prefix) + rest;
+}
+
 function formatHonorNotesHtml_(notes) {
-  return (notes || []).map(function(line, idx) {
-    let t = escapeHonorHtml_(line);
-    if (idx === 2 && t.indexOf('召集') >= 0) {
-      t = t.replace('召集', '召集<br>　　');
-    }
-    return t;
+  return (notes || []).map(function(line) {
+    return '<span style="font-size:14pt;font-weight:normal;">' +
+      wrapHonorNoteAfterAwardClasses_(line, true) + '</span>';
   }).join('<br>');
+}
+
+function formatHonorNotesSheetValue_(notes) {
+  return (notes || []).map(function(line) {
+    return wrapHonorNoteAfterAwardClasses_(line, false);
+  }).join('\n');
+}
+
+/** 若轉成 Google 文件後續行縮排消失，補回與「每」切齊的空白 */
+function ensureHonorNoteContinuationIndent_(body) {
+  const tables = body.getTables();
+  for (let t = 0; t < tables.length; t++) {
+    const table = tables[t];
+    for (let r = 0; r < table.getNumRows(); r++) {
+      const cell = table.getRow(r).getCell(0);
+      const text = cell.getText();
+      if (text.indexOf('每週三') < 0 || text.indexOf('班長頒發') < 0) continue;
+      const prefixMatch = text.match(/三、\s*/);
+      const indent = honorNoteHangingIndentText_(prefixMatch ? prefixMatch[0] : '三、 ');
+      const lines = text.split('\n');
+      let changed = false;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].indexOf('班長頒發') >= 0 && !/^[一二三四]、/.test(lines[i])) {
+          const next = indent + lines[i].replace(/^[　\s]+/, '');
+          if (next !== lines[i]) {
+            lines[i] = next;
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        try {
+          cell.editAsText().setText(lines.join('\n'));
+        } catch (setErr) {}
+      }
+    }
+  }
+}
+
+/**
+ * HTML 的 &lt;br&gt; 轉成 Google 文件後會變段落，預設段距會讓附記一、二之間多出空行。
+ * 去掉空白段、段前段後歸零。
+ */
+function tightenHonorNotesSpacing_(body) {
+  const tables = body.getTables();
+  for (let t = 0; t < tables.length; t++) {
+    const table = tables[t];
+    for (let r = 0; r < table.getNumRows(); r++) {
+      const cell = table.getRow(r).getCell(0);
+      const text = cell.getText();
+      if (text.indexOf('一、') < 0 || text.indexOf('二、') < 0) continue;
+      if (text.replace(/\s/g, '') === '附記') continue;
+
+      try {
+        for (let i = cell.getNumChildren() - 1; i >= 0; i--) {
+          const child = cell.getChild(i);
+          if (child.getType() !== DocumentApp.ElementType.PARAGRAPH) continue;
+          const p = child.asParagraph();
+          if (String(p.getText() || '').replace(/\s/g, '') === '' && cell.getNumChildren() > 1) {
+            cell.removeChild(child);
+          }
+        }
+      } catch (rmErr) {}
+
+      try {
+        for (let i = 0; i < cell.getNumChildren(); i++) {
+          const child = cell.getChild(i);
+          if (child.getType() !== DocumentApp.ElementType.PARAGRAPH) continue;
+          const p = child.asParagraph();
+          p.setSpacingBefore(0);
+          p.setSpacingAfter(0);
+          p.setLineSpacing(1.0);
+        }
+      } catch (spErr) {}
+    }
+  }
 }
 
 function buildHonorFormHtml_(meta, awardLists, grades, config) {
@@ -1870,8 +2065,9 @@ function buildHonorFormHtml_(meta, awardLists, grades, config) {
   });
 
   let html = '<html><head><meta charset="UTF-8">';
-  html += '<style>@page{size:A4 portrait;margin:12mm 10mm 14mm 10mm;}</style></head>';
-  html += '<body style="color:#000;width:190mm;">';
+  html += '<style>@page{size:A4 portrait;margin:12mm 10mm 14mm 10mm;}';
+  html += 'body,table,td{font-family:' + honorKaiCssStack_() + ';}</style></head>';
+  html += '<body style="color:#000;width:190mm;font-family:' + honorKaiCssStack_() + ';">';
   html += '<table style="width:100%;border-collapse:collapse;border:2.25pt solid #000;">';
   html += '<tr><td colspan="6" style="' + honorCellStyle_('font-size:24pt;font-weight:bold;letter-spacing:0.22em;padding:10px 2px;height:38px;') + '">' +
     title + '</td></tr>';
@@ -1909,12 +2105,12 @@ function buildHonorFormHtml_(meta, awardLists, grades, config) {
   }
 
   html += '<tr><td colspan="6" style="' + honorCellStyle_('font-size:16pt;font-weight:bold;padding:6px;') + '">附記</td></tr>';
-  html += '<tr><td colspan="6" style="' + honorCellStyle_('text-align:left;font-size:14pt;padding:10px 12px;line-height:1.7;') + '">' +
+  html += '<tr><td colspan="6" style="' + honorCellStyle_('text-align:left;font-size:14pt;font-weight:normal;padding:8px 12px;line-height:1.35;') + '">' +
     formatHonorNotesHtml_(config.notes) + '</td></tr>';
   html += '</table>';
   html += '<table style="width:100%;margin-top:10px;border:none;"><tr>';
   ['承辦人', '學務主任', '校長'].forEach(function(label) {
-    html += '<td style="font-family:標楷體,DFKai-SB,KaiTi,serif;text-align:center;font-size:18pt;border:none;width:33%;">' +
+    html += '<td style="font-family:' + honorKaiCssStack_() + ';text-align:center;font-size:18pt;border:none;width:33%;">' +
       label + '</td>';
   });
   html += '</tr></table></body></html>';
@@ -1929,25 +2125,11 @@ function applyHonorDocFont_(doc) {
   body.setMarginBottom(40);
   body.setMarginLeft(24);
   body.setMarginRight(24);
-  applyHonorKaiFontToText_(body.editAsText());
-
-  try {
-    let found = body.findText('秩序');
-    while (found) {
-      found.getElement().asText().setBackgroundColor(
-        found.getStartOffset(),
-        found.getEndOffsetInclusive(),
-        '#d9d9d9'
-      );
-      found = body.findText('秩序', found);
-    }
-  } catch (hiErr) {}
 
   const usable = 595.276 - 24 - 24;
   const tables = body.getTables();
   for (let t = 0; t < tables.length; t++) {
     const table = tables[t];
-    table.setBorderColor('#000000');
     let sixColRow = null;
     for (let r = 0; r < table.getNumRows(); r++) {
       if (table.getRow(r).getNumCells() === 6) {
@@ -1956,6 +2138,7 @@ function applyHonorDocFont_(doc) {
       }
     }
     if (sixColRow) {
+      table.setBorderColor('#000000');
       table.setBorderWidth(1);
       const nameW = usable * 0.12;
       const classW = usable * 0.21333;
@@ -1973,10 +2156,27 @@ function applyHonorDocFont_(doc) {
         else if (r <= 3) row.setMinimumHeight(28);
         else row.setMinimumHeight(26);
       }
-    } else if (table.getRow(0).getNumCells() > 6) {
+    } else {
       table.setBorderWidth(0);
     }
   }
+
+  ensureHonorNoteContinuationIndent_(body);
+  tightenHonorNotesSpacing_(body);
+  applyHonorKaiFontToDoc_(doc);
+  normalizeHonorNotesStyle_(body);
+
+  try {
+    let found = body.findText('秩序');
+    while (found) {
+      found.getElement().asText().setBackgroundColor(
+        found.getStartOffset(),
+        found.getEndOffsetInclusive(),
+        '#d9d9d9'
+      );
+      found = body.findText('秩序', found);
+    }
+  } catch (hiErr) {}
 }
 
 function exportHonorHtmlToPdfFile_(html, filename) {
@@ -2152,13 +2352,9 @@ function fillHonorFormSheet_(sheet, meta, awardLists, grades, config) {
     .setHorizontalAlignment('center').setVerticalAlignment('middle');
   sheet.setRowHeight(noteTitleRow, 30);
 
-  const noteLines = (config.notes || []).slice();
-  if (noteLines[2] && noteLines[2].indexOf('召集') >= 0) {
-    noteLines[2] = noteLines[2].replace('召集', '召集\n　　');
-  }
   sheet.getRange(noteBodyRow, 1, 1, lastCol).merge();
-  sheet.getRange(noteBodyRow, 1).setValue(noteLines.join('\n'))
-    .setFontFamily(font).setFontSize(14)
+  sheet.getRange(noteBodyRow, 1).setValue(formatHonorNotesSheetValue_(config.notes))
+    .setFontFamily(font).setFontSize(14).setFontWeight('normal')
     .setHorizontalAlignment('left').setVerticalAlignment('top')
     .setWrap(true);
   sheet.setRowHeight(noteBodyRow, 140);
@@ -2390,12 +2586,11 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
         cls.rank = currentRank;
       });
       
-      // 特優：名次 <= 3
+      // 特優：名次 <= 3（同分全列）
       const top3 = classrooms.filter(c => c.rank <= 3);
       
-      // 優等：從名次 >= 4 開始往後取最多三個班級
-      const excellentCandidates = classrooms.filter(c => c.rank >= 4);
-      const excellent3 = excellentCandidates.slice(0, 3);
+      // 優勝：名次 >= 4 起取約 3 名，同分增額（不可 slice 截斷）
+      const excellent3 = pickHonorExcellentWithTies_(classrooms);
       
       rankedData[grade] = {
         top3: top3,
@@ -2426,7 +2621,7 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       grades.forEach(function(grade) {
         const top3 = rankedData[grade].top3;
         if (i < top3.length) {
-          row.push('前三名', '"' + top3[i].classroomName.replace(/"/g, '""') + '"');
+          row.push('特優', '"' + top3[i].classroomName.replace(/"/g, '""') + '"');
         } else {
           row.push('', '');
         }
@@ -2441,7 +2636,7 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
         const excellent3 = rankedData[grade].excellent3;
         if (i < excellent3.length) {
           const isSpecial = excellent3[i].classroomName.includes('普通'); // 普通科標記
-          row.push('四至六名' + (isSpecial ? '*' : ''), '"' + excellent3[i].classroomName.replace(/"/g, '""') + '"');
+          row.push('優勝' + (isSpecial ? '*' : ''), '"' + excellent3[i].classroomName.replace(/"/g, '""') + '"');
         } else {
           row.push('', '');
         }
@@ -2454,7 +2649,7 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
     lines.push('一、週評比取前6名，若因名次重複而超過6個班級，則增額授獎；每日評分細項如共享雲端資料夾附件所示。');
     lines.push('二、每週由學務處統一公佈績優班級及名次。');
     lines.push('三、利用集會時機統一頒發獎狀，如無集會時機，則由學務主任召集受獎班級風紀股長頒發或放班級櫃。');
-    lines.push('四、普通科教室區納入評比與排名，不占名額。');
+    lines.push('四、服務科及普通科之評分，不與一般科班評比排序，惟仍依得分並列名次');
     lines.push(''); // 空行
     lines.push(''); // 空行
     
@@ -2471,7 +2666,7 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       classrooms.forEach(function(classroom) {
         const name = classroom.classroomName || '';
         const rankLabel = classroom.rank || '';
-        const rankText = classroom.rank <= 3 ? '前三名' : (classroom.rank >= 4 && classroom.rank <= 6 ? '四至六名' : '');
+        const rankText = classroom.rank <= 3 ? '特優' : (classroom.rank >= 4 && classroom.rank <= 6 ? '優勝' : '');
         
         const row = [
           '"' + name.replace(/"/g, '""') + '"',

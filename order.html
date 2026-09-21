@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23e67e22'/%3E%3C/svg%3E">
   <title>秩序評分結果查詢</title>
   <link rel="prefetch" href="order-score.html">
@@ -398,16 +401,6 @@
 
     #weeklyExportModal .export-modal {
       max-width: 520px;
-    }
-
-    #weeklyExportModal a.weekly-pdf-download-link {
-      display: inline-block;
-      padding: 10px 18px;
-      background: #7e57c2;
-      color: #fff;
-      border-radius: 6px;
-      text-decoration: none;
-      font-weight: bold;
     }
     
     .export-modal h3 {
@@ -984,8 +977,8 @@
     </footer>
   </div>
 
-  <script src="js/config-order.js"></script>
-  <script src="js/api.js?v=20260916fix1"></script>
+  <script src="js/config-order.js?v=20260921pdf1"></script>
+  <script src="js/api.js?v=20260921pdf1"></script>
   <script>
     let allClassrooms = [];
     let classroomNetworkStarted = false;
@@ -2039,15 +2032,10 @@
         pdfBtn.style.display = '';
       }
       if (info) {
-        const href = String(lastWeeklyPdfDownloadUrl || '').replace(/"/g, '&quot;');
-        info.innerHTML = '已產生每週排名 PDF' + formatWeeklyRangeText(result) +
-          '，請點下方按鈕或連結下載。<br><br>' +
-          '<a class="weekly-pdf-download-link" href="' + href +
-          '" target="_blank" rel="noopener noreferrer">點此下載 PDF</a>' +
-          '<p style="margin-top:12px;font-size:12px;color:#888;word-break:break-all;text-align:left;">' +
-          href + '</p>';
+        info.textContent = '已產生每週排名 PDF' + formatWeeklyRangeText(result) +
+          '，請點下方「下載 PDF」。';
       }
-      showMessage('已產生每週排名 PDF，請點視窗中的連結下載。', 'success');
+      showMessage('已產生每週排名 PDF，請點視窗中的按鈕下載。', 'success');
     }
 
     function exportWeeklyStatisticsToCsv() {

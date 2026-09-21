@@ -985,8 +985,8 @@
     </footer>
   </div>
 
-  <script src="js/config.js"></script>
-  <script src="js/api.js?v=20260916fix1"></script>
+  <script src="js/config.js?v=20260921pdf1"></script>
+  <script src="js/api.js?v=20260921pdf1"></script>
   <script>
     let allClassrooms = [];
     let classroomNetworkStarted = false;
@@ -2045,15 +2045,10 @@
         pdfBtn.style.display = '';
       }
       if (info) {
-        const href = String(lastWeeklyPdfDownloadUrl || '').replace(/"/g, '&quot;');
-        info.innerHTML = '已產生每週排名 PDF' + formatWeeklyRangeText(result) +
-          '，請點下方按鈕或連結下載。<br><br>' +
-          '<a class="weekly-pdf-download-link" href="' + href +
-          '" target="_blank" rel="noopener noreferrer">點此下載 PDF</a>' +
-          '<p style="margin-top:12px;font-size:12px;color:#888;word-break:break-all;text-align:left;">' +
-          href + '</p>';
+        info.textContent = '已產生每週排名 PDF' + formatWeeklyRangeText(result) +
+          '，請點下方「下載 PDF」。';
       }
-      showMessage('已產生每週排名 PDF，請點視窗中的連結下載。', 'success');
+      showMessage('已產生每週排名 PDF，請點視窗中的按鈕下載。', 'success');
     }
 
     function exportWeeklyStatisticsToCsv() {
