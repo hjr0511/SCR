@@ -891,6 +891,10 @@
             <input type="text" id="adminEditClassroomLabel" disabled>
           </div>
           <div class="form-group">
+            <label for="adminEditScoreTime">評分時間</label>
+            <input type="datetime-local" id="adminEditScoreTime" step="1">
+          </div>
+          <div class="form-group">
             <label for="adminEditTimeSlot">評比項目</label>
             <select id="adminEditTimeSlot">
               <option value="午休狀況">午休狀況</option>
@@ -2359,6 +2363,26 @@
       }
     }
     
+    function timestampToDatetimeLocal(timestamp) {
+      const text = String(timestamp || '').trim();
+      if (!text) return '';
+      const matched = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      const pad = function(n) { return String(n).padStart(2, '0'); };
+      if (matched) {
+        return matched[1] + '-' + pad(matched[2]) + '-' + pad(matched[3]) + 'T' + pad(matched[4]) + ':' + matched[5] + ':' + pad(matched[6] || '0');
+      }
+      const date = new Date(text);
+      if (isNaN(date.getTime())) return '';
+      return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
+        'T' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+    }
+
+    function datetimeLocalToScoreTimestamp(value) {
+      const matched = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+      if (!matched) return '';
+      return matched[1] + '-' + matched[2] + '-' + matched[3] + ' ' + matched[4] + ':' + matched[5] + ':' + (matched[6] || '00');
+    }
+
     function openAdminEditRecord(rowIndex) {
       const record = lastRecordsByRow[rowIndex];
       if (!record) {
@@ -2367,6 +2391,7 @@
       }
       document.getElementById('adminEditRowIndex').value = String(record.rowIndex);
       document.getElementById('adminEditTimestamp').value = record.timestamp || '';
+      document.getElementById('adminEditScoreTime').value = timestampToDatetimeLocal(record.timestamp);
       document.getElementById('adminEditClassroomName').value = record.classroomName || '';
       document.getElementById('adminEditClassroomLabel').value =
         (record.classroomName || '') + (record.classroomId ? ' (' + record.classroomId + ')' : '');
@@ -2395,8 +2420,14 @@
         showMessage('請輸入管理員密碼', 'error');
         return;
       }
+      const scoreTime = datetimeLocalToScoreTimestamp(document.getElementById('adminEditScoreTime').value);
+      if (!scoreTime) {
+        showMessage('請填寫正確的評分時間', 'error');
+        return;
+      }
       const totalRaw = String(document.getElementById('adminEditTotalScore').value || '').trim();
       const updates = {
+        timestamp: scoreTime,
         timeSlot: document.getElementById('adminEditTimeSlot').value,
         photoDeduction: Number(document.getElementById('adminEditPhotoDeduction').value) || 0,
         bonus: Number(document.getElementById('adminEditBonus').value) || 0,

@@ -1177,6 +1177,27 @@ function getScoreRecords(classroomId, classroomName, grade) {
   }
 }
 
+function parseAdminScoreTimestamp_(value) {
+  const raw = String(value || '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) throw new Error('評分時間格式不正確');
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const hour = Number(m[4]);
+  const minute = Number(m[5]);
+  const second = Number(m[6] || 0);
+  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59) {
+    throw new Error('評分時間不正確');
+  }
+  const probe = new Date(year, month - 1, day, hour, minute, second);
+  if (probe.getFullYear() !== year || probe.getMonth() !== month - 1 || probe.getDate() !== day) {
+    throw new Error('評分時間不正確');
+  }
+  const pad = function(n) { return (n < 10 ? '0' : '') + n; };
+  return year + '-' + pad(month) + '-' + pad(day) + ' ' + pad(hour) + ':' + pad(minute) + ':' + pad(second);
+}
+
 function normalizeScoreTimestamp_(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -1226,7 +1247,7 @@ function deleteScoreRecord(rowIndex, expectedTimestamp, expectedClassroomName, a
 
 /**
  * 管理員編輯評分記錄（需管理員密碼）
- * updates 可含：area, timeSlot, photoDeduction, directDeduction, bonus, totalScore, notes
+ * updates 可含：timestamp, area, timeSlot, photoDeduction, directDeduction, bonus, totalScore, notes
  */
 function updateScoreRecord(rowIndex, updates, expectedTimestamp, expectedClassroomName, adminPassword) {
   try {
@@ -1242,7 +1263,11 @@ function updateScoreRecord(rowIndex, updates, expectedTimestamp, expectedClassro
     const width = Math.max(sheet.getLastColumn(), CLEAN_SCORE_HEADERS.length);
     const row = sheet.getRange(ri, 1, 1, width).getValues()[0];
     assertCleanScoreRowMatch_(row, col, expectedTimestamp, expectedClassroomName);
+    const oldTimestamp = cleanCellStr_(row, col.timestamp);
 
+    if (updates.timestamp !== undefined) {
+      row[col.timestamp] = parseAdminScoreTimestamp_(updates.timestamp);
+    }
     if (updates.area !== undefined) row[col.area] = String(updates.area || '');
     if (updates.timeSlot !== undefined) row[col.timeSlot] = String(updates.timeSlot || '');
     if (updates.notes !== undefined) row[col.notes] = String(updates.notes || '');
@@ -1271,6 +1296,7 @@ function updateScoreRecord(rowIndex, updates, expectedTimestamp, expectedClassro
     row[col.totalScore] = totalScore;
 
     sheet.getRange(ri, 1, 1, width).setValues([row]);
+    invalidateHonorPdfCacheForDate_(new Date(oldTimestamp || Date.now()));
     invalidateHonorPdfCacheForDate_(new Date(cleanCellStr_(row, col.timestamp) || Date.now()));
     return {
       success: true,
