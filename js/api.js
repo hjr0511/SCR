@@ -612,7 +612,7 @@
     ) {
       return queryViaEmbed(payload, apiTimeoutFor(action));
     }
-    if (action === 'deleteScoreRecord' || action === 'updateScoreRecord') {
+    if (action === 'deleteScoreRecord' || action === 'updateScoreRecord' || action === 'saveScore') {
       return formPost(payload, apiTimeoutFor(action));
     }
     if (action === 'exportWeeklyStatisticsPdf') {
