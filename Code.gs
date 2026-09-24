@@ -450,6 +450,190 @@ function getPhotoFolderLink() {
 }
 
 /**
+ * 試算表開啟時顯示管理選單（後端按鈕）
+ */
+function onOpen() {
+  try {
+    SpreadsheetApp.getUi()
+      .createMenu('評分工具')
+      .addItem('開啟目前照片資料夾', 'menuOpenPhotoFolder')
+      .addItem('重設照片資料夾指向', 'menuResetPhotoFolderPointer')
+      .addItem('依檔名更新舊照片連結', 'menuRemapPhotoLinksByFilename')
+      .addToUi();
+  } catch (err) {
+    Logger.log('onOpen 選單建立失敗：' + err);
+  }
+}
+
+function menuOpenPhotoFolder() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const url = getCleanPhotoFolder_().getUrl();
+    ui.alert('目前照片資料夾', url + '\n\n請到瀏覽器開啟此連結。', ui.ButtonSet.OK);
+  } catch (err) {
+    ui.alert('無法取得照片資料夾：' + (err.message || err));
+  }
+}
+
+/**
+ * 清除已記住的資料夾 ID，下次改依「試算表所在資料夾」尋找／建立
+ */
+function menuResetPhotoFolderPointer() {
+  const ui = SpreadsheetApp.getUi();
+  const ans = ui.alert(
+    '重設照片資料夾指向',
+    '將清除腳本記住的舊資料夾 ID。\n下次上傳會在「試算表所在資料夾」底下使用／建立「' + CLEAN_PHOTO_FOLDER_NAME + '」。\n\n確定重設？',
+    ui.ButtonSet.YES_NO
+  );
+  if (ans !== ui.Button.YES) return;
+  try {
+    PropertiesService.getScriptProperties().deleteProperty(CLEAN_PHOTO_FOLDER_PROP);
+    clearFolderCache();
+    const folder = getCleanPhotoFolder_();
+    ui.alert('已重設', '目前指向：\n' + folder.getUrl(), ui.ButtonSet.OK);
+  } catch (err) {
+    ui.alert('重設失敗：' + (err.message || err));
+  }
+}
+
+function extractDriveFileId_(url) {
+  const s = String(url || '').trim();
+  if (!s) return '';
+  let m = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return m[1];
+  m = s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m) return m[1];
+  m = s.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return m[1];
+  return '';
+}
+
+function buildPhotoFolderNameMap_(folder) {
+  const map = {};
+  const files = folder.getFiles();
+  while (files.hasNext()) {
+    const f = files.next();
+    const name = String(f.getName() || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (!map[key]) {
+      map[key] = f.getUrl();
+    }
+  }
+  return map;
+}
+
+/**
+ * 依「新照片資料夾」同名檔案，把評分記錄裡的舊 Drive 連結換成新連結。
+ * 條件：腳本仍能讀到舊檔（或檔案已在新資料夾且檔名相同）。
+ */
+function menuRemapPhotoLinksByFilename() {
+  const ui = SpreadsheetApp.getUi();
+  const ans = ui.alert(
+    '依檔名更新舊照片連結',
+    '會讀取目前照片資料夾中的檔名，把「評分記錄」→「照片連結」裡\n能對上檔名的舊連結換成新連結。\n\n請先確認：\n1. 照片已放到新帳號的「' + CLEAN_PHOTO_FOLDER_NAME + '」\n2. 已執行「重設照片資料夾指向」（若剛換帳號）\n3. 若舊檔仍在舊帳號，請先共用給本腳本帳號，才能讀到檔名\n\n開始執行？',
+    ui.ButtonSet.YES_NO
+  );
+  if (ans !== ui.Button.YES) return;
+
+  try {
+    const result = remapPhotoLinksByFilename_();
+    ui.alert(
+      '更新完成',
+      '更新儲存格：' + result.cellsUpdated + ' 格\n' +
+      '替換連結：' + result.linksReplaced + ' 個\n' +
+      '略過（找不到同名／讀不到舊檔）：' + result.linksSkipped + ' 個\n' +
+      '新資料夾檔案數：' + result.folderFileCount,
+      ui.ButtonSet.OK
+    );
+  } catch (err) {
+    ui.alert('更新失敗：' + (err.message || err));
+  }
+}
+
+function remapPhotoLinksByFilename_() {
+  const sheet = getCleanScoresSheet_();
+  if (!sheet) throw new Error('找不到評分記錄工作表');
+  const col = getCleanScoreColMap_(getCleanScoreHeaderRow_(sheet));
+  if (col.photoLinks < 0) throw new Error('找不到「照片連結」欄');
+
+  const folder = getCleanPhotoFolder_();
+  const nameMap = buildPhotoFolderNameMap_(folder);
+  const folderFileCount = Object.keys(nameMap).length;
+  if (!folderFileCount) {
+    throw new Error('目前照片資料夾沒有檔案，請先把照片移入：' + folder.getUrl());
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return { cellsUpdated: 0, linksReplaced: 0, linksSkipped: 0, folderFileCount: folderFileCount };
+  }
+
+  const range = sheet.getRange(2, col.photoLinks + 1, lastRow, col.photoLinks + 1);
+  const values = range.getValues();
+  let cellsUpdated = 0;
+  let linksReplaced = 0;
+  let linksSkipped = 0;
+  const nameByOldId = {};
+
+  for (let i = 0; i < values.length; i++) {
+    const raw = String(values[i][0] || '').trim();
+    if (!raw) continue;
+    const parts = raw.split(/[;\s]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+    if (!parts.length) continue;
+
+    let changed = false;
+    const nextParts = parts.map(function(link) {
+      const id = extractDriveFileId_(link);
+      if (!id) {
+        linksSkipped++;
+        return link;
+      }
+      let fileName = nameByOldId[id];
+      if (fileName === undefined) {
+        try {
+          fileName = DriveApp.getFileById(id).getName();
+          nameByOldId[id] = fileName;
+        } catch (e) {
+          nameByOldId[id] = '';
+          fileName = '';
+        }
+      }
+      if (!fileName) {
+        linksSkipped++;
+        return link;
+      }
+      const newUrl = nameMap[String(fileName).toLowerCase()];
+      if (!newUrl) {
+        linksSkipped++;
+        return link;
+      }
+      if (newUrl === link || extractDriveFileId_(newUrl) === id) {
+        return newUrl;
+      }
+      linksReplaced++;
+      changed = true;
+      return newUrl;
+    });
+
+    if (changed) {
+      values[i][0] = nextParts.join('; ');
+      cellsUpdated++;
+    }
+  }
+
+  if (cellsUpdated > 0) {
+    range.setValues(values);
+  }
+  return {
+    cellsUpdated: cellsUpdated,
+    linksReplaced: linksReplaced,
+    linksSkipped: linksSkipped,
+    folderFileCount: folderFileCount
+  };
+}
+
+/**
  * 儲存評分記錄
  * @param {Object} scoreData 評分資料物件
  * @return {Object} 執行結果
