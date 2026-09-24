@@ -922,23 +922,27 @@ function getScoreRecords(classroomId, classroomName, grade) {
     const col = getOrderScoreColMap_(headers);
     Logger.log('標題列：' + headers.join(', '));
     
-    // 取得資料列（跳過標題列）
-    let records = data.slice(1);
+    // 取得資料列（跳過標題列），並帶上試算表列號
+    let records = data.slice(1).map(function(row, i) {
+      return { row: row, rowIndex: i + 2 };
+    });
     Logger.log('過濾前記錄數：' + records.length);
     
     // 主要以教室名稱過濾（教室編號可能是樓層如「仁愛五樓」，會重複）
     if (classroomName && classroomName.trim() !== '') {
       const beforeCount = records.length;
       const nameTrim = String(classroomName).trim();
-      records = records.filter(row => {
-        const rowClassroomName = String(row[6] || '').trim();
+      records = records.filter(function(item) {
+        const rowClassroomName = String(item.row[6] || '').trim();
         return rowClassroomName === nameTrim;
       });
       Logger.log('根據教室名稱過濾：' + beforeCount + ' -> ' + records.length);
     } else if (classroomId && classroomId.trim() !== '') {
       const beforeCount = records.length;
       const idTrim = String(classroomId).trim();
-      records = records.filter(row => String(row[5] || '').trim() === idTrim);
+      records = records.filter(function(item) {
+        return String(item.row[5] || '').trim() === idTrim;
+      });
       Logger.log('根據教室編號過濾：' + beforeCount + ' -> ' + records.length);
     }
     
@@ -984,7 +988,8 @@ function getScoreRecords(classroomId, classroomName, grade) {
       
       // 被評年級在第3欄（索引2），教室名稱在第7欄（索引6）
       const beforeCount = records.length;
-      records = records.filter(row => {
+      records = records.filter(function(item) {
+        const row = item.row;
         const rawGrade = String(row[2] || '').trim();   // 被評年級欄位（可能為空）
         const classroomName = String(row[6] || '').trim();
         
@@ -1010,8 +1015,9 @@ function getScoreRecords(classroomId, classroomName, grade) {
     }
     
     // 轉換為物件陣列（確保所有值都是可序列化的基本類型）
-    const result = records.map((row, index) => {
+    const result = records.map(function(item, index) {
       try {
+        const row = item.row;
         // 確保所有值都是字符串或數字，避免 Date 對象等無法序列化的類型
         const timestamp = row[0] ? String(row[0]) : '';
         const evaluatorGrade = row[1] ? String(row[1]) : '';
@@ -1030,6 +1036,7 @@ function getScoreRecords(classroomId, classroomName, grade) {
         const photoLinks = row[col.photoLinks] ? String(row[col.photoLinks]) : '';
         
         return {
+          rowIndex: item.rowIndex,
           timestamp: timestamp,
           evaluatorGrade: evaluatorGrade,
           evaluatedGrade: evaluatedGrade,
@@ -1081,6 +1088,130 @@ function getScoreRecords(classroomId, classroomName, grade) {
     Logger.log('getScoreRecords 發生錯誤：' + error.toString());
     Logger.log('錯誤堆疊：' + (error.stack || '無堆疊資訊'));
     return [];
+  }
+}
+
+function normalizeScoreTimestamp_(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) {
+    return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+  }
+  return raw.replace(/\//g, '-');
+}
+
+function orderCellStr_(row, index) {
+  if (index < 0) return '';
+  return row[index] ? String(row[index]) : '';
+}
+
+function orderCellNum_(row, index) {
+  if (index < 0) return 0;
+  return Number(row[index]) || 0;
+}
+
+function assertOrderScoreRowMatch_(row, col, expectedTimestamp, expectedClassroomName) {
+  const ts = normalizeScoreTimestamp_(orderCellStr_(row, col.timestamp));
+  const name = orderCellStr_(row, col.classroomName);
+  const expTs = normalizeScoreTimestamp_(expectedTimestamp);
+  const expName = String(expectedClassroomName || '').trim();
+  if (expName && name !== expName) {
+    throw new Error('記錄已變更，請重新查詢後再試');
+  }
+  if (expTs && ts && ts !== expTs) {
+    throw new Error('記錄已變更，請重新查詢後再試');
+  }
+}
+
+/**
+ * 管理員刪除評分記錄（需管理員密碼）
+ */
+function deleteScoreRecord(rowIndex, expectedTimestamp, expectedClassroomName, adminPassword) {
+  try {
+    requireAdminPassword_(adminPassword);
+    const sheet = getOrderScoresSheet_();
+    if (!sheet) return { success: false, message: '找不到評分記錄工作表' };
+    const ri = Number(rowIndex);
+    if (!ri || ri < 2 || ri > sheet.getLastRow()) {
+      return { success: false, message: '找不到該筆記錄' };
+    }
+    const col = getOrderScoreColMap_(sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0]);
+    const row = sheet.getRange(ri, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0];
+    assertOrderScoreRowMatch_(row, col, expectedTimestamp, expectedClassroomName);
+    const tsRaw = orderCellStr_(row, col.timestamp);
+    sheet.deleteRow(ri);
+    invalidateHonorPdfCacheForDate_(new Date(tsRaw || Date.now()));
+    return { success: true, message: '已刪除該筆評分記錄' };
+  } catch (error) {
+    return { success: false, message: error.message || error.toString() };
+  }
+}
+
+/**
+ * 管理員編輯評分記錄（需管理員密碼）
+ * updates 可含：timeSlot, photoDeduction(扣分), bonus, totalScore, notes, itemSummary
+ */
+function updateScoreRecord(rowIndex, updates, expectedTimestamp, expectedClassroomName, adminPassword) {
+  try {
+    requireAdminPassword_(adminPassword);
+    updates = updates || {};
+    const sheet = getOrderScoresSheet_();
+    if (!sheet) return { success: false, message: '找不到評分記錄工作表' };
+    const ri = Number(rowIndex);
+    if (!ri || ri < 2 || ri > sheet.getLastRow()) {
+      return { success: false, message: '找不到該筆記錄' };
+    }
+    const width = Math.max(sheet.getLastColumn(), 1);
+    const col = getOrderScoreColMap_(sheet.getRange(1, 1, 1, width).getValues()[0]);
+    const row = sheet.getRange(ri, 1, 1, width).getValues()[0];
+    assertOrderScoreRowMatch_(row, col, expectedTimestamp, expectedClassroomName);
+
+    if (updates.timeSlot !== undefined) row[col.timeSlot] = String(updates.timeSlot || '');
+    if (updates.notes !== undefined) row[col.notes] = String(updates.notes || '');
+    if (updates.itemSummary !== undefined && col.itemSummary >= 0) {
+      row[col.itemSummary] = String(updates.itemSummary || '');
+    }
+
+    let deduction = orderCellNum_(row, col.deduction);
+    let bonus = orderCellNum_(row, col.bonus);
+    if (updates.photoDeduction !== undefined) deduction = Number(updates.photoDeduction) || 0;
+    if (updates.deduction !== undefined) deduction = Number(updates.deduction) || 0;
+    if (updates.bonus !== undefined) bonus = Number(updates.bonus) || 0;
+    if (deduction < 0) deduction = 0;
+    if (bonus < 0) bonus = 0;
+    row[col.deduction] = deduction;
+    row[col.bonus] = bonus;
+
+    let totalScore;
+    if (updates.totalScore !== undefined && updates.totalScore !== null && String(updates.totalScore).trim() !== '') {
+      totalScore = Number(updates.totalScore);
+      if (isNaN(totalScore)) totalScore = bonus - deduction;
+    } else {
+      totalScore = bonus - deduction;
+    }
+    row[col.totalScore] = totalScore;
+
+    sheet.getRange(ri, 1, 1, width).setValues([row]);
+    invalidateHonorPdfCacheForDate_(new Date(orderCellStr_(row, col.timestamp) || Date.now()));
+    return {
+      success: true,
+      message: '已更新該筆評分記錄',
+      record: {
+        rowIndex: ri,
+        timestamp: orderCellStr_(row, col.timestamp),
+        classroomName: orderCellStr_(row, col.classroomName),
+        timeSlot: orderCellStr_(row, col.timeSlot),
+        photoDeduction: deduction,
+        directDeduction: 0,
+        bonus: bonus,
+        totalScore: totalScore,
+        notes: orderCellStr_(row, col.notes),
+        itemSummary: col.itemSummary >= 0 ? orderCellStr_(row, col.itemSummary) : ''
+      }
+    };
+  } catch (error) {
+    return { success: false, message: error.message || error.toString() };
   }
 }
 
@@ -2547,14 +2678,11 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       return startStr + '-' + endStr;
     };
     
-    // 計算學年度和學期（簡化處理，假設從 9 月開始為第一學期）
-    const year = weekStart.getFullYear();
-    const month = weekStart.getMonth() + 1;
-    const schoolYear = month >= 9 ? year - 1911 : year - 1912; // 民國年
-    const semester = month >= 9 || month <= 1 ? 1 : 2;
-    
-    // 計算週數（簡化處理，從學期開始計算）
-    const weekNum = Math.floor((weekStart - new Date(year - (month >= 9 ? 0 : 1), 8, 1)) / (7 * 24 * 60 * 60 * 1000)) + 1;
+    // 學年度／學期／週次與績優 PDF 同一套算法（含 9/1 所在週為第 1 週）
+    const meta = getHonorWeekMeta_(weekStart);
+    const schoolYear = meta.schoolYear;
+    const semester = meta.semester;
+    const weekNum = meta.weekNum;
     
     // ========== 第一頁：績優班級 ==========
     lines.push('中正高工生活榮譽競賽秩序評比績優班級');
@@ -3610,6 +3738,10 @@ function dispatchAction_(action, args, authPassword) {
       return saveScore(args[0], authPassword);
     case 'getScoreRecords':
       return getScoreRecords(args[0] || '', args[1] || '', args[2] || '');
+    case 'deleteScoreRecord':
+      return deleteScoreRecord(args[0], args[1], args[2], args[3]);
+    case 'updateScoreRecord':
+      return updateScoreRecord(args[0], args[1], args[2], args[3], args[4]);
     case 'verifyScoreSystemPassword':
       return verifyScoreSystemPassword(args[0]);
     case 'getClassroomComparison':

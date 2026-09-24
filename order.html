@@ -577,6 +577,50 @@
       background-color: transparent !important;
     }
     
+    .records-table .admin-actions {
+      white-space: nowrap;
+    }
+    
+    .records-table .admin-btn {
+      display: inline-block;
+      margin: 2px 0;
+      padding: 4px 8px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #fff;
+    }
+    
+    .records-table .admin-btn.edit {
+      background: #1976d2;
+    }
+    
+    .records-table .admin-btn.delete {
+      background: #c62828;
+    }
+    
+    .admin-edit-form .form-group {
+      margin-bottom: 10px;
+    }
+    
+    .admin-edit-form label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 4px;
+      color: #444;
+    }
+    
+    .admin-edit-form input,
+    .admin-edit-form select,
+    .admin-edit-form textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    
     .photo-links {
       max-width: 300px;
       word-wrap: break-word;
@@ -820,11 +864,66 @@
               <th>備註</th>
               <th>細項</th>
               <th>照片</th>
+              <th>管理</th>
             </tr>
           </thead>
           <tbody id="recordsTableBody">
           </tbody>
         </table>
+      </div>
+    </div>
+    
+    <!-- 管理員編輯評分記錄 Modal -->
+    <div id="adminEditModalOverlay" class="export-modal-overlay" style="display: none;">
+      <div class="export-modal">
+        <h3>編輯評分記錄</h3>
+        <p style="font-size: 13px; color: #666; margin-bottom: 12px;">需輸入管理員密碼（系統設定「管理員密碼」）才可儲存。</p>
+        <div class="admin-edit-form">
+          <input type="hidden" id="adminEditRowIndex">
+          <input type="hidden" id="adminEditTimestamp">
+          <input type="hidden" id="adminEditClassroomName">
+          <div class="form-group">
+            <label>教室</label>
+            <input type="text" id="adminEditClassroomLabel" disabled>
+          </div>
+          <div class="form-group">
+            <label for="adminEditTimeSlot">評比項目</label>
+            <select id="adminEditTimeSlot">
+              <option value="午休狀況">午休狀況</option>
+              <option value="重要集會">重要集會</option>
+              <option value="課間巡堂">課間巡堂</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="adminEditPhotoDeduction">扣分</label>
+            <input type="number" id="adminEditPhotoDeduction" step="0.1" min="0">
+          </div>
+          <div class="form-group">
+            <label for="adminEditBonus">加分</label>
+            <input type="number" id="adminEditBonus" step="0.1" min="0">
+          </div>
+          <div class="form-group">
+            <label for="adminEditTotalScore">總分（可手動覆寫；空白則依 加分−扣分 計算）</label>
+            <input type="number" id="adminEditTotalScore" step="0.1">
+          </div>
+          <div class="form-group">
+            <label for="adminEditNotes">備註</label>
+            <textarea id="adminEditNotes" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="adminEditItemSummary">細項說明</label>
+            <textarea id="adminEditItemSummary" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="adminEditPassword">管理員密碼</label>
+            <input type="password" id="adminEditPassword" autocomplete="current-password">
+          </div>
+        </div>
+        <div class="export-modal-buttons">
+          <button type="button" class="search-btn" id="adminEditSaveBtn">儲存</button>
+          <button type="button" class="search-btn" id="adminEditCancelBtn" style="background-color: #777;">取消</button>
+        </div>
       </div>
     </div>
     
@@ -977,12 +1076,14 @@
     </footer>
   </div>
 
-  <script src="js/config-order.js?v=20260921pdf1"></script>
-  <script src="js/api.js?v=20260921pdf1"></script>
+  <script src="js/config-order.js?v=20260924admin1"></script>
+  <script src="js/api.js?v=20260924admin1"></script>
   <script>
     let allClassrooms = [];
     let classroomNetworkStarted = false;
     let holdClassroomNetwork = false;
+    let lastRecordsByRow = {};
+    let lastQueryMode = 'filter'; // 'filter' | 'all'
     
     // 頁面載入時初始化
     window.onload = function() {
@@ -1229,6 +1330,15 @@
           loadComparisonClassrooms(selectedGrade);
         });
       }
+      
+      const adminEditSaveBtn = document.getElementById('adminEditSaveBtn');
+      if (adminEditSaveBtn) {
+        adminEditSaveBtn.addEventListener('click', saveAdminEditRecord);
+      }
+      const adminEditCancelBtn = document.getElementById('adminEditCancelBtn');
+      if (adminEditCancelBtn) {
+        adminEditCancelBtn.addEventListener('click', closeAdminEditModal);
+      }
     }
     
     // 進入評分系統（需要密碼驗證）
@@ -1321,6 +1431,7 @@
                 return;
               }
               
+              lastQueryMode = 'all';
               displayRecords(records);
               calculateSummary(records);
               // 顯示 Modal（此時統計摘要數值已更新）
@@ -1424,6 +1535,7 @@
               
               if (noRecordsEl) noRecordsEl.style.display = 'none';
               
+              lastQueryMode = 'filter';
               displayRecords(records);
               calculateSummary(records);
               openRecordsModal();
@@ -1454,6 +1566,7 @@
     // 顯示評分記錄
     function displayRecords(records) {
       try {
+        lastRecordsByRow = {};
         const tbody = document.getElementById('recordsTableBody');
         if (!tbody) {
           return;
@@ -1560,7 +1673,17 @@
             '<td class="' + scoreClass + '">' + totalScore.toFixed(1) + '</td>' +
             '<td>' + escapeHtml(record.notes || '') + '</td>' +
             '<td>' + itemSummaryHtml + '</td>' +
-            '<td class="photo-links">' + photoLinksHtml + '</td>';
+            '<td class="photo-links">' + photoLinksHtml + '</td>' +
+            '<td class="admin-actions">' +
+              (record.rowIndex
+                ? '<button type="button" class="admin-btn edit" onclick="openAdminEditRecord(' + Number(record.rowIndex) + ')">編輯</button> ' +
+                  '<button type="button" class="admin-btn delete" onclick="adminDeleteScoreRecord(' + Number(record.rowIndex) + ')">刪除</button>'
+                : '<span style="color:#999;font-size:12px;">請重新部署後端</span>') +
+            '</td>';
+          
+          if (record.rowIndex) {
+            lastRecordsByRow[record.rowIndex] = record;
+          }
           
           tbody.appendChild(tr);
         });
@@ -2219,6 +2342,126 @@
       if (overlay) {
         overlay.style.display = 'none';
       }
+    }
+    
+    function refreshRecordsAfterAdminChange() {
+      closeAdminEditModal();
+      if (lastQueryMode === 'all') {
+        const showAllBtn = document.getElementById('showAllBtn');
+        if (showAllBtn) showAllBtn.click();
+        else searchAllRecords();
+      } else {
+        searchRecords();
+      }
+    }
+    
+    function openAdminEditRecord(rowIndex) {
+      const record = lastRecordsByRow[rowIndex];
+      if (!record) {
+        showMessage('找不到該筆記錄，請重新查詢', 'error');
+        return;
+      }
+      document.getElementById('adminEditRowIndex').value = String(record.rowIndex);
+      document.getElementById('adminEditTimestamp').value = record.timestamp || '';
+      document.getElementById('adminEditClassroomName').value = record.classroomName || '';
+      document.getElementById('adminEditClassroomLabel').value =
+        (record.classroomName || '') + (record.classroomId ? ' (' + record.classroomId + ')' : '');
+      const slotEl = document.getElementById('adminEditTimeSlot');
+      if (slotEl) slotEl.value = record.timeSlot || '午休狀況';
+      const deduction = Number(record.directDeduction) || Number(record.photoDeduction) || 0;
+      document.getElementById('adminEditPhotoDeduction').value = deduction;
+      document.getElementById('adminEditBonus').value = Number(record.bonus) || 0;
+      document.getElementById('adminEditTotalScore').value = Number(record.totalScore) || 0;
+      document.getElementById('adminEditNotes').value = record.notes || '';
+      document.getElementById('adminEditItemSummary').value = record.itemSummary || '';
+      document.getElementById('adminEditPassword').value = '';
+      const overlay = document.getElementById('adminEditModalOverlay');
+      if (overlay) overlay.style.display = 'flex';
+    }
+    
+    function closeAdminEditModal() {
+      const overlay = document.getElementById('adminEditModalOverlay');
+      if (overlay) overlay.style.display = 'none';
+    }
+    
+    function saveAdminEditRecord() {
+      const rowIndex = Number(document.getElementById('adminEditRowIndex').value);
+      const password = String(document.getElementById('adminEditPassword').value || '').trim();
+      if (!password) {
+        showMessage('請輸入管理員密碼', 'error');
+        return;
+      }
+      const totalRaw = String(document.getElementById('adminEditTotalScore').value || '').trim();
+      const updates = {
+        timeSlot: document.getElementById('adminEditTimeSlot').value,
+        photoDeduction: Number(document.getElementById('adminEditPhotoDeduction').value) || 0,
+        bonus: Number(document.getElementById('adminEditBonus').value) || 0,
+        notes: document.getElementById('adminEditNotes').value || '',
+        itemSummary: document.getElementById('adminEditItemSummary').value || ''
+      };
+      if (totalRaw !== '') updates.totalScore = Number(totalRaw);
+      
+      const saveBtn = document.getElementById('adminEditSaveBtn');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = '儲存中…';
+      }
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = '儲存';
+          }
+          if (!result || !result.success) {
+            showMessage((result && result.message) || '更新失敗', 'error');
+            return;
+          }
+          showMessage(result.message || '已更新', 'info');
+          refreshRecordsAfterAdminChange();
+        })
+        .withFailureHandler(function(error) {
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = '儲存';
+          }
+          showMessage(error.message || '更新失敗', 'error');
+        })
+        .updateScoreRecord(
+          rowIndex,
+          updates,
+          document.getElementById('adminEditTimestamp').value,
+          document.getElementById('adminEditClassroomName').value,
+          password
+        );
+    }
+    
+    function adminDeleteScoreRecord(rowIndex) {
+      const record = lastRecordsByRow[rowIndex];
+      if (!record) {
+        showMessage('找不到該筆記錄，請重新查詢', 'error');
+        return;
+      }
+      const label = (record.classroomName || '') + '／' + (record.timestamp || '');
+      if (!confirm('確定要刪除這筆評分記錄？\n' + label + '\n此操作無法復原。')) return;
+      const password = prompt('請輸入管理員密碼以刪除：');
+      if (password === null) return;
+      if (!String(password).trim()) {
+        showMessage('請輸入管理員密碼', 'error');
+        return;
+      }
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!result || !result.success) {
+            showMessage((result && result.message) || '刪除失敗', 'error');
+            return;
+          }
+          showMessage(result.message || '已刪除', 'info');
+          refreshRecordsAfterAdminChange();
+        })
+        .withFailureHandler(function(error) {
+          showMessage(error.message || '刪除失敗', 'error');
+        })
+        .deleteScoreRecord(rowIndex, record.timestamp || '', record.classroomName || '', String(password).trim());
     }
     
     function closeSemesterModal() {
