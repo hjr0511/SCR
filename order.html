@@ -1034,6 +1034,7 @@
           console.error('找不到 classroomSelect 元素');
           return;
         }
+        const previous = select.value;
         while (select.options.length > 1) {
           select.remove(1);
         }
@@ -1052,6 +1053,8 @@
             select.appendChild(option);
           }
         });
+        // 重載清單後保留原本選取，避免被清回「請選擇教室」
+        if (previous) select.value = previous;
       } catch (err) {
         console.error('處理教室清單時發生錯誤：', err);
         showMessage('處理教室清單時發生錯誤：' + (err.message || err.toString()), 'error');
