@@ -13,7 +13,8 @@
  * 6. 把部署網址貼到下方
  */
 window.APP_CONFIG = {
-  GAS_WEB_APP_URL: 'https://script.google.com/macros/s/AKfycbyvWGaHphZhwhiYCkc4XPITjj1zeC88laJYt_e3RHVrjD354oXB4yQZrRWLekzEf0vf/exec',
+  GAS_WEB_APP_URL: 'https://script.google.com/macros/s/AKfycbxTOl-OX-LpDhYUMkoFoVJc5Zp3cXUwTiv9EJxwr0xo-tGmV5Mv9Hb-krgqDfBVQUVTUA/exec',
+/** GAS_WEB_APP_URL: 'https://script.google.com/macros/s/AKfycbyvWGaHphZhwhiYCkc4XPITjj1zeC88laJYt_e3RHVrjD354oXB4yQZrRWLekzEf0vf/exec',*/
   AUTH_STORAGE_KEY: 'ORDER_SCORE_AUTH',
   LOGIN_TYPE_KEY: 'ORDER_SCORE_LOGIN_TYPE',
   CONFIG_FILE: 'js/config-order.js'
