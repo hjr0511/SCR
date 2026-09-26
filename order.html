@@ -624,6 +624,34 @@
     #adminEditModalOverlay {
       z-index: 2100;
     }
+
+    .admin-result-notice {
+      display: none;
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 4000;
+      max-width: min(92vw, 520px);
+      padding: 14px 18px;
+      border-radius: 8px;
+      font-size: 16px;
+      line-height: 1.45;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+      text-align: center;
+    }
+
+    .admin-result-notice.ok {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .admin-result-notice.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
     
     .photo-links {
       max-width: 300px;
@@ -780,6 +808,7 @@
   </style>
 </head>
 <body>
+  <div id="adminResultNotice" class="admin-result-notice" role="status"></div>
   <div class="container">
     <h1>秩序評分結果查詢</h1>
     
@@ -2386,7 +2415,7 @@
     function openAdminEditRecord(rowIndex) {
       const record = lastRecordsByRow[rowIndex];
       if (!record) {
-        showMessage('找不到該筆記錄，請重新查詢', 'error');
+        showAdminNotice('找不到該筆記錄，請重新查詢', 'error');
         return;
       }
       document.getElementById('adminEditRowIndex').value = String(record.rowIndex);
@@ -2417,12 +2446,12 @@
       const rowIndex = Number(document.getElementById('adminEditRowIndex').value);
       const password = String(document.getElementById('adminEditPassword').value || '').trim();
       if (!password) {
-        showMessage('請輸入管理員密碼', 'error');
+        showAdminNotice('請輸入管理員密碼', 'error');
         return;
       }
       const scoreTime = datetimeLocalToScoreTimestamp(document.getElementById('adminEditScoreTime').value);
       if (!scoreTime) {
-        showMessage('請填寫正確的評分時間', 'error');
+        showAdminNotice('請填寫正確的評分時間', 'error');
         return;
       }
       const totalRaw = String(document.getElementById('adminEditTotalScore').value || '').trim();
@@ -2448,10 +2477,10 @@
             saveBtn.textContent = '儲存';
           }
           if (!result || !result.success) {
-            showMessage((result && result.message) || '更新失敗', 'error');
+            showAdminNotice((result && result.message) || '更新失敗', 'error');
             return;
           }
-          showMessage(result.message || '已更新', 'info');
+          showAdminNotice(result.message || '已更新評分記錄', 'ok');
           refreshRecordsAfterAdminChange();
         })
         .withFailureHandler(function(error) {
@@ -2459,7 +2488,7 @@
             saveBtn.disabled = false;
             saveBtn.textContent = '儲存';
           }
-          showMessage(error.message || '更新失敗', 'error');
+          showAdminNotice((error && error.message) || '更新失敗', 'error');
         })
         .updateScoreRecord(
           rowIndex,
@@ -2473,7 +2502,7 @@
     function adminDeleteScoreRecord(rowIndex) {
       const record = lastRecordsByRow[rowIndex];
       if (!record) {
-        showMessage('找不到該筆記錄，請重新查詢', 'error');
+        showAdminNotice('找不到該筆記錄，請重新查詢', 'error');
         return;
       }
       const label = (record.classroomName || '') + '／' + (record.timestamp || '');
@@ -2481,20 +2510,20 @@
       const password = prompt('請輸入管理員密碼以刪除：');
       if (password === null) return;
       if (!String(password).trim()) {
-        showMessage('請輸入管理員密碼', 'error');
+        showAdminNotice('請輸入管理員密碼', 'error');
         return;
       }
       google.script.run
         .withSuccessHandler(function(result) {
           if (!result || !result.success) {
-            showMessage((result && result.message) || '刪除失敗', 'error');
+            showAdminNotice((result && result.message) || '刪除失敗', 'error');
             return;
           }
-          showMessage(result.message || '已刪除', 'info');
+          showAdminNotice(result.message || '已刪除該筆評分記錄', 'ok');
           refreshRecordsAfterAdminChange();
         })
         .withFailureHandler(function(error) {
-          showMessage(error.message || '刪除失敗', 'error');
+          showAdminNotice((error && error.message) || '刪除失敗', 'error');
         })
         .deleteScoreRecord(rowIndex, record.timestamp || '', record.classroomName || '', String(password).trim());
     }
@@ -2826,6 +2855,19 @@
       openWeeklyResultModal('每週統計結果', html);
     }
     
+    let adminNoticeTimer = null;
+    function showAdminNotice(message, type) {
+      const notice = document.getElementById('adminResultNotice');
+      if (!notice) return;
+      notice.textContent = message || '';
+      notice.className = 'admin-result-notice ' + (type === 'error' ? 'error' : 'ok');
+      notice.style.display = 'block';
+      if (adminNoticeTimer) clearTimeout(adminNoticeTimer);
+      adminNoticeTimer = setTimeout(function() {
+        notice.style.display = 'none';
+      }, 4000);
+    }
+
     // 顯示訊息
     function showMessage(message, type) {
       try {
