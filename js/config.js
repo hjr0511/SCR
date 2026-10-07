@@ -13,7 +13,7 @@
  * 7. 把部署網址貼到下方（格式：https://script.google.com/macros/s/xxxxx/exec）
  */
 window.APP_CONFIG = {
-  GAS_WEB_APP_URL: 'https://script.google.com/macros/s/AKfycbxosRh8HQ3axllsry4jjKb2k5c8Bo6bGzTQA_w82BBJx4hDC6YqRSmJvzA2XYqRzgZv/exec',
+  GAS_WEB_APP_URL: 'https://script.google.com/macros/s/AKfycbwT9n_mkDX_uYK4oQqk83wLV2u4z65ycd9KceQ1jNyt_K7IPL9ZE5EzWx16-bwoMZ0TsQ/exec',
   AUTH_STORAGE_KEY: 'SCHOOL_SCORE_AUTH',
   LOGIN_TYPE_KEY: 'SCHOOL_SCORE_LOGIN_TYPE',
   CONFIG_FILE: 'js/config.js'
