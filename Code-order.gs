@@ -1426,10 +1426,10 @@ function updateScoreRecord(rowIndex, updates, expectedTimestamp, expectedClassro
 }
 
 /**
- * 取得每週評分統計（按年級分組，計算特優和優等）
+ * 取得每週評分統計（按年級分組，計算特優和優勝）
  * 同一班同一天同一評比項目多位老師評分時，取平均後再計入週加減。
  * @param {string} weekStartDate 週開始日期 (yyyy-MM-dd 格式，選填，預設為本週)
- * @return {Object} 週統計資料，包含各年級的特優和優等
+ * @return {Object} 週統計資料，包含各年級的特優和優勝
  */
 function getWeeklyStatistics(weekStartDate) {
   try {
@@ -1554,7 +1554,7 @@ function getWeeklyStatistics(weekStartDate) {
 
     applyOrderWeeklyBaseToGradeGroups_(gradeGroups);
     
-    // 轉換為陣列並排序，找出特優和優等（處理同分名次）
+    // 轉換為陣列並排序，找出特優和優勝（處理同分名次）
     const result = {};
     
     Object.keys(gradeGroups).forEach(grade => {
@@ -1603,7 +1603,7 @@ function getWeeklyStatistics(weekStartDate) {
         grade: grade,
         totalClassrooms: rankedClassrooms.length,
         top3: top3,              // 特優（名次1-3）
-        excellent3: excellent3,  // 優等（名次4-6）
+        excellent3: excellent3,  // 優勝（名次4-6）
         bottom3: bottom3,        // 待改進（最後三個名次）
         allClassrooms: rankedClassrooms
       };
@@ -1746,7 +1746,7 @@ function invalidateHonorPdfCacheForDate_(dateObj) {
     weekStart.setHours(0, 0, 0, 0);
     const weekKey = Utilities.formatDate(weekStart, Session.getScriptTimeZone(), 'yyyy-MM-dd');
     const contest = getWeeklyHonorPdfConfig_().contestShort;
-    CacheService.getScriptCache().remove('honorPdf_v6_' + contest + '_' + weekKey);
+    CacheService.getScriptCache().remove('honorPdf_v7_' + contest + '_' + weekKey);
   } catch (err) {}
 }
 
@@ -1766,7 +1766,7 @@ function exportWeeklyStatisticsPdf(weekStartDate, jobId) {
   const weekEnd = range.weekEnd;
   const tz = Session.getScriptTimeZone();
   const weekKey = Utilities.formatDate(weekStart, tz, 'yyyy-MM-dd');
-  const cacheKey = 'honorPdf_v6_' + config.contestShort + '_' + weekKey;
+  const cacheKey = 'honorPdf_v7_' + config.contestShort + '_' + weekKey;
   const jobKey = jobId ? ('pdfJob_' + String(jobId)) : '';
   const cache = CacheService.getScriptCache();
 
@@ -2031,7 +2031,7 @@ function applyAwardRanks_(classrooms) {
 }
 
 /**
- * 優勝／優等：名次 >= 4 起取約 3 名；若第 3 名同分，全部列入（增額授獎）。
+ * 優勝／優勝：名次 >= 4 起取約 3 名；若第 3 名同分，全部列入（增額授獎）。
  */
 function pickHonorExcellentWithTies_(rankedList) {
   const candidates = (rankedList || []).filter(function(c) { return c.rank >= 4; });
@@ -2060,7 +2060,7 @@ function buildHonorAwardLists_(rankedData, grades, config) {
       rows.push({ label: '特優', name: formatHonorClassName_(c.classroomName) });
     });
     regular.filter(function(c) { return c.awardRank >= 4 && c.awardRank <= 6; }).forEach(function(c) {
-      rows.push({ label: '優等', name: formatHonorClassName_(c.classroomName) });
+      rows.push({ label: '優勝', name: formatHonorClassName_(c.classroomName) });
     });
 
     const awardees = regular.filter(function(c) { return c.awardRank <= 6; });
@@ -2070,7 +2070,7 @@ function buildHonorAwardLists_(rankedData, grades, config) {
     special.forEach(function(c) {
       if (cutoff === null || c.totalScore < cutoff) return;
       const isTop = topCutoff !== null && c.totalScore >= topCutoff;
-      const base = isTop ? '特優' : '優等';
+      const base = isTop ? '特優' : '優勝';
       rows.push({
         label: base + (config.useNote4 ? '註4' : ''),
         name: formatHonorClassName_(c.classroomName)
@@ -2746,7 +2746,7 @@ function exportSheetToPdfFile_(ss, sheet, filename) {
 
 /**
  * 匯出每週排名為 CSV 字串，給前端下載
- * 格式類似 PDF：班級名稱、星期一～星期六、總分、排名、名次（週三無評分時顯示 0）
+ * 含高一至高三特優／優勝表，以及各班每日加減、總分與名次（不含附記）
  *
  * @param {string} weekStartDate 週開始日期 (yyyy-MM-dd，選填，空白=本週)
  * @return {Object} { success, message, filename, csvContent }
@@ -2894,11 +2894,6 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
     const semester = meta.semester;
     const weekNum = meta.weekNum;
     
-    // ========== 第一頁：績優班級 ==========
-    lines.push('中正高工生活榮譽競賽秩序評比績優班級');
-    lines.push(schoolYear + '學年度第' + semester + '學期第' + weekNum + '週(' + formatDateRange(weekStart, weekEnd) + ')');
-    lines.push(''); // 空行
-    
     // 先計算所有年級的排名
     const rankedData = {};
     grades.forEach(function(grade) {
@@ -2937,11 +2932,12 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       };
     });
     
-    // 第一頁表格標頭
+    lines.push('中正高工生活榮譽競賽秩序評比績優班級');
+    lines.push(schoolYear + '學年度第' + semester + '學期第' + weekNum + '週(' + formatDateRange(weekStart, weekEnd) + ')');
+    lines.push('');
     lines.push('高一,,高二,,高三');
     lines.push('名次,班級,名次,班級,名次,班級');
-    
-    // 找出三個年級中特優和優等的最大數量
+
     const maxTop3 = Math.max(
       rankedData['一年級'].top3.length,
       rankedData['二年級'].top3.length,
@@ -2952,8 +2948,7 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       rankedData['二年級'].excellent3.length,
       rankedData['三年級'].excellent3.length
     );
-    
-    // 輸出特優
+
     for (let i = 0; i < maxTop3; i++) {
       const row = [];
       grades.forEach(function(grade) {
@@ -2966,14 +2961,13 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       });
       lines.push(row.join(','));
     }
-    
-    // 輸出優等
+
     for (let i = 0; i < maxExcellent3; i++) {
       const row = [];
       grades.forEach(function(grade) {
         const excellent3 = rankedData[grade].excellent3;
         if (i < excellent3.length) {
-          const isSpecial = excellent3[i].classroomName.includes('普通'); // 普通科標記
+          const isSpecial = excellent3[i].classroomName.includes('普通');
           row.push('優勝' + (isSpecial ? '*' : ''), '"' + excellent3[i].classroomName.replace(/"/g, '""') + '"');
         } else {
           row.push('', '');
@@ -2981,17 +2975,10 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       });
       lines.push(row.join(','));
     }
-    
-    lines.push(''); // 空行
-    lines.push('附記');
-    lines.push('一、週評比取前6名，若因名次重複而超過6個班級，則增額授獎；每日評分細項如共享雲端資料夾附件所示。');
-    lines.push('二、每週由學務處統一公佈績優班級及名次。');
-    lines.push('三、利用集會時機統一頒發獎狀，如無集會時機，則由學務主任召集受獎班級風紀股長頒發或放班級櫃。');
-    lines.push('四、服務科及普通科之評分，不與一般科班評比排序，惟仍依得分並列名次');
-    lines.push(''); // 空行
-    lines.push(''); // 空行
-    
-    // ========== 第二頁：詳細評分明細 ==========
+
+    lines.push('');
+    lines.push('');
+
     lines.push('中正高工生活榮譽競賽秩序評比績優班級 ' + schoolYear + '學年度第' + semester + '學期第' + weekNum + '週(' + formatDateRange(weekStart, weekEnd) + ')');
     lines.push(['', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '總分', '排名', '名次'].join(','));
     
@@ -3422,13 +3409,13 @@ function getOrderScoreValuesForSemesterStats_() {
 }
 
 /**
- * 取得學期總成績統計（按年級分組，計算特優和優等）
+ * 取得學期總成績統計（按年級分組，計算特優和優勝）
  * 學期成績 = 各週總分加總 ÷ 有評分的週數；該週無人評分則不列入，跳過的班當週以 75 分計。
  * 各週加減沿用「同一天同一評比項目多位老師取平均」後再加總。
  * @param {string} startDate 開始日期 (yyyy-MM-dd 格式，必填)
  * @param {string} endDate 結束日期 (yyyy-MM-dd 格式，必填)
  * @param {string} grade 年級（選填，如果指定則只返回該年級的統計）
- * @return {Object} 學期統計資料，包含各年級的特優和優等
+ * @return {Object} 學期統計資料，包含各年級的特優和優勝
  */
 function getSemesterStatistics(startDate, endDate, grade) {
   try {
@@ -3615,7 +3602,7 @@ function getSemesterStatistics(startDate, endDate, grade) {
       });
     });
     
-    // 轉換為陣列並排序，找出特優和優等（處理同分名次）
+    // 轉換為陣列並排序，找出特優和優勝（處理同分名次）
     const result = {};
     
     Object.keys(gradeGroups).forEach(gradeKey => {
