@@ -437,19 +437,6 @@ function clearFolderCache() {
 
 
 /**
- * 取得照片資料夾連結
- * @return {string} 照片資料夾的 Google Drive 連結
- */
-function getPhotoFolderLink() {
-  try {
-    return getCleanPhotoFolder_().getUrl();
-  } catch (error) {
-    Logger.log('取得照片資料夾連結失敗：' + error.toString());
-    return '';
-  }
-}
-
-/**
  * 試算表開啟時顯示管理選單（後端按鈕）
  */
 function onOpen() {
@@ -631,39 +618,6 @@ function remapPhotoLinksByFilename_() {
     linksSkipped: linksSkipped,
     folderFileCount: folderFileCount
   };
-}
-
-/**
- * 儲存評分記錄
- * @param {Object} scoreData 評分資料物件
- * @return {Object} 執行結果
- */
-/**
- * 檢查 Google Drive 權限
- * @return {Object} 權限檢查結果
- */
-function checkDrivePermission() {
-  try {
-    // 嘗試存取 Drive
-    DriveApp.getFolders();
-    return {
-      hasPermission: true,
-      message: '權限正常'
-    };
-  } catch (error) {
-    const errorMsg = error.toString() || '';
-    if (errorMsg.includes('權限') || errorMsg.includes('permission') || errorMsg.includes('DriveApp') || errorMsg.includes('authorization')) {
-      return {
-        hasPermission: false,
-        message: '需要授權 Google Drive 存取權限',
-        instructions: '請在 Google Apps Script 編輯器中，點擊「執行」按鈕，選擇任意函數執行，然後授權「查看和管理您的 Google Drive 檔案」權限。'
-      };
-    }
-    return {
-      hasPermission: false,
-      message: '檢查權限時發生錯誤：' + errorMsg
-    };
-  }
 }
 
 /**
@@ -863,38 +817,14 @@ function saveScore(scoreData, authPassword) {
     const weightedBonus = bonus * deductionWeight;
     const totalScore = weightedBonus - weightedDeduction;
     
-    // 取得被評年級
+    // 被評年級：優先從教室名稱判斷（例如「機械二孝」→二年級）
+    // 評分者年級對應僅作備援，避免把實際二年級班寫成三年級
     let evaluatedGrade = '';
-    if (scoreData.evaluatorGrade && scoreData.evaluatorGrade.trim() !== '') {
-      // 如果有評分年級，使用映射關係取得被評年級
+    if (scoreData.classroomName) {
+      evaluatedGrade = extractGradeFromClassroomName_(scoreData.classroomName);
+    }
+    if (!evaluatedGrade && scoreData.evaluatorGrade && scoreData.evaluatorGrade.trim() !== '') {
       evaluatedGrade = GRADE_MAPPING[scoreData.evaluatorGrade] || '';
-    } else {
-      // 如果沒有評分年級（老師或衛生組），從教室名稱推斷被評年級
-      if (scoreData.classroomName) {
-        // 從教室名稱提取年級的函數
-        function extractGradeFromName(name) {
-          if (!name) return '';
-          const text = String(name);
-          // 優先匹配完整年級名稱（如「一年一班」「二年一班」「三年一班」）
-          if (text.includes('一年')) return '一年級';
-          if (text.includes('二年')) return '二年級';
-          if (text.includes('三年')) return '三年級';
-          // 匹配數字格式（如「1年一班」「2年一班」「3年一班」）
-          if (text.includes('1年') || (text.match(/^1/) && !text.match(/^10/))) return '一年級';
-          if (text.includes('2年') || (text.match(/^2/) && !text.match(/^20/))) return '二年級';
-          if (text.includes('3年') || (text.match(/^3/) && !text.match(/^30/))) return '三年級';
-          // 最後匹配單個年級字（如「電機一忠」「電機二孝」「電機三忠」）
-          const gradeMatch = text.match(/([一二三])/);
-          if (gradeMatch) {
-            const char = gradeMatch[1];
-            if (char === '一') return '一年級';
-            if (char === '二') return '二年級';
-            if (char === '三') return '三年級';
-          }
-          return '';
-        }
-        evaluatedGrade = extractGradeFromName(scoreData.classroomName);
-      }
     }
     
     const width = Math.max(sheet.getLastColumn(), CLEAN_SCORE_HEADERS.length);
@@ -1044,44 +974,15 @@ function getScoreRecords(classroomId, classroomName, grade) {
       const gradeTrim = String(grade).trim();
       const targetVariants = gradeFormatMap[gradeTrim] || [gradeTrim];
       
-      // 從教室名稱中推斷年級（支援職科班級名稱，例如「資訊一忠」「製圖二忠」「汽車三孝」）
-      function extractGradeFromNameForRecord(name) {
-        if (!name) return '';
-        const text = String(name);
-        
-        // 優先匹配「一年」「二年」「三年」
-        if (text.includes('一年')) return '一年級';
-        if (text.includes('二年')) return '二年級';
-        if (text.includes('三年')) return '三年級';
-        
-        // 再看是否有獨立出現的 1/2/3（避免 10、20、30 等房號）
-        const numMatch = text.match(/([123])(?![0-9])/);
-        if (numMatch) {
-          if (numMatch[1] === '1') return '一年級';
-          if (numMatch[1] === '2') return '二年級';
-          if (numMatch[1] === '3') return '三年級';
-        }
-        
-        // 最後看是否有「一／二／三」這三個字
-        const chMatch = text.match(/([一二三])/);
-        if (chMatch) {
-          if (chMatch[1] === '一') return '一年級';
-          if (chMatch[1] === '二') return '二年級';
-          if (chMatch[1] === '三') return '三年級';
-        }
-        
-        return '';
-      }
-      
-      // 被評年級在第3欄（索引2），教室名稱在第7欄（索引6）
+      // 被評年級欄、教室名稱欄
       const beforeCount = records.length;
       records = records.filter(function(item) {
         const row = item.row;
         const rawGrade = String(row[col.evaluatedGrade] || '').trim();
         const classroomName = String(row[col.classroomName] || '').trim();
         
-        // 先用欄位中的被評年級；如果是空的，就從教室名稱推斷
-        const effectiveGrade = rawGrade || extractGradeFromNameForRecord(classroomName);
+        // 優先從教室名稱判斷（「機械二孝」→二年級），欄位僅作備援
+        const effectiveGrade = extractGradeFromClassroomName_(classroomName) || rawGrade;
         const match = targetVariants.includes(effectiveGrade);
         
         if (!match) {
@@ -1400,18 +1301,14 @@ function getWeeklyStatistics(weekStartDate) {
     }
     
     weeklyRecords.forEach(function(row) {
-      let grade = String(row[col.evaluatedGrade] || '').trim();
       const classroomId = String(row[col.classroomId] || '').trim();
       const classroomName = String(row[col.classroomName] || '').trim();
       const totalScore = cleanCellNum_(row, col.totalScore);
+      // 優先從教室名稱判斷年級，避免評分者對應把「機械二孝」寫成三年級
+      let grade = extractGradeFromName(classroomName) || String(row[col.evaluatedGrade] || '').trim();
       
       // 使用「教室名稱」作為分組 key，只依名稱統計
       const classroomKey = classroomName;
-      
-      // 如果被評年級為空，從教室名稱推斷
-      if (!grade && classroomName) {
-        grade = extractGradeFromName(classroomName);
-      }
       
       // 沒有年級或沒有教室名稱就不計算（編號可能是樓層、不適合作唯一鍵）
       if (!grade || !classroomName) return;
@@ -1599,12 +1496,12 @@ function exportWeeklyStatisticsToSheet(weekStartDate) {
   }
 }
 
-/** 整潔績優班級 PDF 標題、附記與普通科名額規則 */
+/** 整潔績優班級 PDF 標題、附記與服務科／普通科註4規則（比照秩序） */
 function getWeeklyHonorPdfConfig_() {
   return {
     contestShort: '整潔',
-    specialKeywords: ['普通'],
-    useNote4: false,
+    specialKeywords: ['普通', '服務'],
+    useNote4: true,
     notes: [
       '一、 週評比取前 6 名，若因名次重複而超過 6 個班級，則增額授獎；每日評分細項如共享雲端資料夾附件所示。',
       '二、 每週由學務處統一公佈績優班級及名次。',
@@ -1628,7 +1525,7 @@ function invalidateHonorPdfCacheForDate_(dateObj) {
     weekStart.setHours(0, 0, 0, 0);
     const weekKey = Utilities.formatDate(weekStart, Session.getScriptTimeZone(), 'yyyy-MM-dd');
     const contest = getWeeklyHonorPdfConfig_().contestShort;
-    CacheService.getScriptCache().remove('honorPdf_v17_' + contest + '_' + weekKey);
+    CacheService.getScriptCache().remove('honorPdf_v19_' + contest + '_' + weekKey);
   } catch (err) {}
 }
 
@@ -1648,7 +1545,7 @@ function exportWeeklyStatisticsPdf(weekStartDate, jobId) {
   const weekEnd = range.weekEnd;
   const tz = Session.getScriptTimeZone();
   const weekKey = Utilities.formatDate(weekStart, tz, 'yyyy-MM-dd');
-  const cacheKey = 'honorPdf_v17_' + config.contestShort + '_' + weekKey;
+  const cacheKey = 'honorPdf_v19_' + config.contestShort + '_' + weekKey;
   const jobKey = jobId ? ('pdfJob_' + String(jobId)) : '';
   const cache = CacheService.getScriptCache();
 
@@ -1799,12 +1696,21 @@ function getWeekDateRange_(weekStartDate) {
 function extractGradeFromClassroomName_(name) {
   if (!name) return '';
   const text = String(name);
+  // 完整「一年／二年／三年」優先
   if (text.indexOf('一年') >= 0) return '一年級';
   if (text.indexOf('二年') >= 0) return '二年級';
   if (text.indexOf('三年') >= 0) return '三年級';
   if (text.indexOf('1年') >= 0 || (text.match(/^1/) && !text.match(/^10/))) return '一年級';
   if (text.indexOf('2年') >= 0 || (text.match(/^2/) && !text.match(/^20/))) return '二年級';
   if (text.indexOf('3年') >= 0 || (text.match(/^3/) && !text.match(/^30/))) return '三年級';
+  // 職科班名：機械二孝、電機一忠、汽車三愛 等（年級字在科系與班別之間）
+  const vocMatch = text.match(/[一二三123](?=[忠孝仁愛])/);
+  if (vocMatch) {
+    const ch = vocMatch[0];
+    if (ch === '一' || ch === '1') return '一年級';
+    if (ch === '二' || ch === '2') return '二年級';
+    if (ch === '三' || ch === '3') return '三年級';
+  }
   const gradeMatch = text.match(/([一二三])/);
   if (gradeMatch) {
     if (gradeMatch[1] === '一') return '一年級';
@@ -1812,6 +1718,47 @@ function extractGradeFromClassroomName_(name) {
     if (gradeMatch[1] === '三') return '三年級';
   }
   return '';
+}
+
+/** 建立週統計用的空班級列（沒評過分時各日與總分為 0） */
+function createEmptyWeeklyClassroom_(classroomName, classroomId, grade) {
+  return {
+    classroomId: classroomId || '',
+    classroomName: classroomName || '',
+    grade: grade || '',
+    monday: 0,
+    tuesday: 0,
+    wednesday: 0,
+    thursday: 0,
+    friday: 0,
+    saturday: 0,
+    totalScore: 0,
+    recordCount: 0
+  };
+}
+
+/**
+ * 先以「教室清單」帶入各年級全班（0 分），再累加該週評分紀錄。
+ * 沒加分／沒扣分（整週無紀錄）的班級也會出現，分數為 0。
+ */
+function seedWeeklyGradeGroupsFromClassroomList_() {
+  const gradeGroups = {};
+  const allClassrooms = getAllClassrooms();
+  allClassrooms.forEach(function(room) {
+    const classroomName = String(room.name || '').trim();
+    if (!classroomName) return;
+    const grade = extractGradeFromClassroomName_(classroomName) || String(room.grade || '').trim();
+    if (!grade) return;
+    if (!gradeGroups[grade]) gradeGroups[grade] = {};
+    if (!gradeGroups[grade][classroomName]) {
+      gradeGroups[grade][classroomName] = createEmptyWeeklyClassroom_(
+        classroomName,
+        String(room.id || '').trim(),
+        grade
+      );
+    }
+  });
+  return gradeGroups;
 }
 
 function collectWeeklyGradeScores_(weekStart, weekEnd) {
@@ -1830,28 +1777,22 @@ function collectWeeklyGradeScores_(weekStart, weekEnd) {
     }
   });
 
-  const gradeGroups = {};
+  // 教室清單全班先以 0 分列入，沒評過的班也會顯示
+  const gradeGroups = seedWeeklyGradeGroupsFromClassroomList_();
   weeklyRecords.forEach(function(row) {
-    let grade = String(row[col.evaluatedGrade] || '').trim();
     const classroomName = String(row[col.classroomName] || '').trim();
     const totalScore = cleanCellNum_(row, col.totalScore);
     const recordDate = new Date(row[col.timestamp]);
-    if (!grade && classroomName) {
-      grade = extractGradeFromClassroomName_(classroomName);
-    }
+    // 優先從教室名稱判斷年級
+    let grade = extractGradeFromClassroomName_(classroomName) || String(row[col.evaluatedGrade] || '').trim();
     if (!grade || !classroomName) return;
     if (!gradeGroups[grade]) gradeGroups[grade] = {};
     if (!gradeGroups[grade][classroomName]) {
-      gradeGroups[grade][classroomName] = {
-        classroomName: classroomName,
-        monday: 0,
-        tuesday: 0,
-        wednesday: 0,
-        thursday: 0,
-        friday: 0,
-        saturday: 0,
-        totalScore: 0
-      };
+      gradeGroups[grade][classroomName] = createEmptyWeeklyClassroom_(
+        classroomName,
+        String(row[col.classroomId] || '').trim(),
+        grade
+      );
     }
     const dayOfWeek = recordDate.getDay();
     const target = gradeGroups[grade][classroomName];
@@ -1862,6 +1803,7 @@ function collectWeeklyGradeScores_(weekStart, weekEnd) {
     else if (dayOfWeek === 5) target.friday += totalScore;
     else if (dayOfWeek === 6) target.saturday += totalScore;
     target.totalScore += totalScore;
+    target.recordCount += 1;
   });
   return gradeGroups;
 }
@@ -2465,13 +2407,6 @@ function exportHonorHtmlToPdfFile_(html, filename) {
   }
 }
 
-function trashDriveFilesByName_(name) {
-  const files = DriveApp.getFilesByName(name);
-  while (files.hasNext()) {
-    files.next().setTrashed(true);
-  }
-}
-
 function setHonorRankLabel_(cell, label, fontFamily) {
   cell.setHorizontalAlignment('center').setVerticalAlignment('middle');
   cell.setFontFamily(fontFamily).setFontColor('#000000');
@@ -2637,7 +2572,8 @@ function exportSheetToPdfFile_(ss, sheet, filename) {
 
 /**
  * 匯出每週排名為 CSV 字串，給前端下載
- * 格式類似 PDF：班級名稱、星期一～星期六、總分、排名、名次（週三無評分時顯示 0）
+ * 格式類似 PDF：班級名稱、星期一～星期六、總分、排名、名次
+ * 教室清單中該週沒評過（不加分不扣分）的班級仍會列出，分數顯示 0
  *
  * @param {string} weekStartDate 週開始日期 (yyyy-MM-dd，選填，空白=本週)
  * @return {Object} { success, message, filename, csvContent }
@@ -2649,12 +2585,6 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       return {
         success: false,
         message: '找不到評分記錄工作表'
-      };
-    }
-    if (!loaded.records.length) {
-      return {
-        success: false,
-        message: '沒有評分記錄'
       };
     }
     const col = loaded.col;
@@ -2713,21 +2643,18 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       return '';
     }
     
-    // 按年級和教室名稱分組，計算每日分數
-    const gradeGroups = {};
+    // 先帶入教室清單全班（沒評過＝0），再累加該週評分
+    const gradeGroups = seedWeeklyGradeGroupsFromClassroomList_();
     
     weeklyRecords.forEach(function(row) {
-      let grade = String(row[col.evaluatedGrade] || '').trim();
       const classroomId = String(row[col.classroomId] || '').trim();
       const classroomName = String(row[col.classroomName] || '').trim();
       const totalScore = cleanCellNum_(row, col.totalScore);
       const recordDate = new Date(row[col.timestamp]);
+      // 優先從教室名稱判斷年級
+      let grade = extractGradeFromName(classroomName) || String(row[col.evaluatedGrade] || '').trim();
       
       const classroomKey = classroomName;
-      
-      if (!grade && classroomName) {
-        grade = extractGradeFromName(classroomName);
-      }
       
       if (!grade || !classroomName) return;
       
@@ -2736,19 +2663,7 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       }
       
       if (!gradeGroups[grade][classroomKey]) {
-        gradeGroups[grade][classroomKey] = {
-          classroomId: classroomId,
-          classroomName: classroomName,
-          grade: grade,
-          monday: 0,
-          tuesday: 0,
-          wednesday: 0,
-          thursday: 0,
-          friday: 0,
-          saturday: 0,
-          totalScore: 0,
-          recordCount: 0
-        };
+        gradeGroups[grade][classroomKey] = createEmptyWeeklyClassroom_(classroomName, classroomId, grade);
       }
       
       // 取得星期幾（0=週日, 1=週一, ..., 6=週六）
@@ -3359,15 +3274,11 @@ function getSemesterStatistics(startDate, endDate, grade) {
     }
     
     semesterRecords.forEach(function(row) {
-      let recordGrade = String(row[col.evaluatedGrade] || '').trim();
       const classroomId = String(row[col.classroomId] || '').trim();
       const classroomName = String(row[col.classroomName] || '').trim();
       const totalScore = cleanCellNum_(row, col.totalScore);
-      
-      // 如果被評年級為空，從教室名稱推斷
-      if (!recordGrade && classroomName) {
-        recordGrade = extractGradeFromName(classroomName);
-      }
+      // 優先從教室名稱判斷，欄位僅作備援（避免「機械二孝」被舊資料歸到三年級）
+      let recordGrade = extractGradeFromName(classroomName) || String(row[col.evaluatedGrade] || '').trim();
       
       // 如果指定了年級，只處理該年級的記錄
       if (grade && grade.trim() !== '') {
@@ -3782,14 +3693,16 @@ function apiCall(action, args, authPassword) {
  * 取得評分系統密碼（第一組密碼，給老師/管理員使用）
  * @return {string} 密碼
  */
-function getAuthPasswords_() {
+function getAuthPasswords_(forceRefresh) {
   const cache = CacheService.getScriptCache();
-  const hit = cache.get('scr_auth_pwds');
-  if (hit) {
-    try {
-      const parsed = JSON.parse(hit);
-      if (parsed && typeof parsed.teacher === 'string') return parsed;
-    } catch (e) {}
+  if (!forceRefresh) {
+    const hit = cache.get('scr_auth_pwds');
+    if (hit) {
+      try {
+        const parsed = JSON.parse(hit);
+        if (parsed && typeof parsed.teacher === 'string') return parsed;
+      } catch (e) {}
+    }
   }
   const passwords = { teacher: '1234', student: '5678', admin: '9999' };
   try {
@@ -3828,7 +3741,7 @@ function getAdminPassword() {
 
 function verifyScoreSystemPassword(inputPassword) {
   try {
-    const passwords = getAuthPasswords_();
+    const passwords = getAuthPasswords_(true);
     const inputPwd = String(inputPassword || '').trim();
     let loginType = '';
     let isCorrect = false;
@@ -3856,40 +3769,6 @@ function verifyScoreSystemPassword(inputPassword) {
       url: '',
       loginType: ''
     };
-  }
-}
-
-/**
- * 獲取評分系統URL
- * @return {string} 評分系統的URL
- */
-function getScoreSystemUrl() {
-  try {
-    const service = ScriptApp.getService();
-    if (service) {
-      return service.getUrl() + '?page=score';
-    }
-    return '';
-  } catch (error) {
-    Logger.log('獲取評分系統URL失敗：' + error.toString());
-    return '';
-  }
-}
-
-/**
- * 獲取評分結果查詢頁 URL
- * @return {string} 查詢頁的 Web App URL
- */
-function getViewScoresUrl() {
-  try {
-    const service = ScriptApp.getService();
-    if (service) {
-      return service.getUrl() + '?page=view';
-    }
-    return '';
-  } catch (error) {
-    Logger.log('獲取查詢頁URL失敗：' + error.toString());
-    return '';
   }
 }
 

@@ -1080,7 +1080,13 @@
           <p class="hint-text">不選擇則顯示所有年級的統計</p>
         </div>
         
-        <button type="button" class="search-btn" id="semesterStatsBtn">查詢學期總成績</button>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+          <button type="button" class="search-btn" id="semesterStatsBtn">查詢學期總成績</button>
+          <button type="button" class="search-btn secondary" id="semesterExportBtn" hidden>匯出學期 CSV</button>
+          <button type="button" class="search-btn" id="semesterExportPdfBtn" hidden style="background-color: #7e57c2;">匯出學期 PDF</button>
+          <button type="button" class="search-btn" id="semesterAdminUnlockBtn" style="background-color:#546e7a;">管理員解鎖匯出</button>
+        </div>
+        <p class="hint-text" style="margin-top:8px;">學期授獎：特優 3 名、優勝 3 名（可並列）；普通科／服務科不占一般科 1～6 名額，達標並列並註 4。</p>
       </div>
     </div>
     
@@ -1095,7 +1101,21 @@
         <h3>學期總成績統計</h3>
         <div id="semesterModalContent"></div>
         <div class="export-modal-buttons">
+          <button type="button" class="search-btn secondary" id="semesterModalCsvBtn" hidden>下載 CSV</button>
+          <button type="button" class="search-btn" id="semesterModalPdfBtn" hidden style="background-color: #7e57c2;">下載 PDF</button>
           <button type="button" class="search-btn" id="semesterModalCloseBtn" style="background-color: #777;">關閉</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 學期匯出 Modal（PDF 連結） -->
+    <div id="semesterExportModal" class="export-modal-overlay">
+      <div class="export-modal">
+        <h3>學期排名檔案</h3>
+        <p id="semesterExportInfo">已產生學期排名檔案。</p>
+        <div id="semesterPdfLinkWrap" style="margin: 12px 0;"></div>
+        <div class="export-modal-buttons">
+          <button type="button" class="search-btn" style="background-color: #777;" id="semesterExportCloseBtn">關閉</button>
         </div>
       </div>
     </div>
@@ -1314,6 +1334,12 @@
           closeSemesterModal();
         });
       }
+      const semesterExportCloseBtn = document.getElementById('semesterExportCloseBtn');
+      if (semesterExportCloseBtn) {
+        semesterExportCloseBtn.addEventListener('click', function() {
+          closeSemesterExportModal();
+        });
+      }
       
       // 班級比較按鈕
       const comparisonBtn = document.getElementById('comparisonBtn');
@@ -1323,11 +1349,41 @@
         });
       }
       
-      // 學期總成績查詢按鈕
+      // 學期總成績查詢／匯出按鈕
       const semesterStatsBtn = document.getElementById('semesterStatsBtn');
       if (semesterStatsBtn) {
         semesterStatsBtn.addEventListener('click', function() {
           loadSemesterStatistics();
+        });
+      }
+      const semesterExportBtn = document.getElementById('semesterExportBtn');
+      if (semesterExportBtn) {
+        semesterExportBtn.addEventListener('click', function() {
+          exportSemesterStatisticsToCsv();
+        });
+      }
+      const semesterExportPdfBtn = document.getElementById('semesterExportPdfBtn');
+      if (semesterExportPdfBtn) {
+        semesterExportPdfBtn.addEventListener('click', function() {
+          exportSemesterStatisticsToPdf();
+        });
+      }
+      const semesterAdminUnlockBtn = document.getElementById('semesterAdminUnlockBtn');
+      if (semesterAdminUnlockBtn) {
+        semesterAdminUnlockBtn.addEventListener('click', function() {
+          unlockWeeklyAdminExport();
+        });
+      }
+      const semesterModalCsvBtn = document.getElementById('semesterModalCsvBtn');
+      if (semesterModalCsvBtn) {
+        semesterModalCsvBtn.addEventListener('click', function() {
+          exportSemesterStatisticsToCsv();
+        });
+      }
+      const semesterModalPdfBtn = document.getElementById('semesterModalPdfBtn');
+      if (semesterModalPdfBtn) {
+        semesterModalPdfBtn.addEventListener('click', function() {
+          exportSemesterStatisticsToPdf();
         });
       }
       
@@ -2201,6 +2257,70 @@
       showMessage('已產生每週排名 PDF，請點視窗中的按鈕下載。', 'success');
     }
 
+    function getStoredLoginType() {
+      try {
+        return sessionStorage.getItem((window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE') || '';
+      } catch (e) {
+        return '';
+      }
+    }
+
+    function isAdminSession() {
+      return getStoredLoginType() === 'admin';
+    }
+
+    function applyWeeklyAdminUi() {
+      const isAdmin = isAdminSession();
+      const csvBtn = document.getElementById('weeklyExportBtn');
+      const pdfBtn = document.getElementById('weeklyExportPdfBtn');
+      const unlockBtn = document.getElementById('weeklyAdminUnlockBtn');
+      if (csvBtn) csvBtn.hidden = !isAdmin;
+      if (pdfBtn) pdfBtn.hidden = !isAdmin;
+      if (unlockBtn) unlockBtn.hidden = isAdmin;
+
+      const semesterCsvBtn = document.getElementById('semesterExportBtn');
+      const semesterPdfBtn = document.getElementById('semesterExportPdfBtn');
+      const semesterUnlockBtn = document.getElementById('semesterAdminUnlockBtn');
+      const semesterModalCsvBtn = document.getElementById('semesterModalCsvBtn');
+      const semesterModalPdfBtn = document.getElementById('semesterModalPdfBtn');
+      if (semesterCsvBtn) semesterCsvBtn.hidden = !isAdmin;
+      if (semesterPdfBtn) semesterPdfBtn.hidden = !isAdmin;
+      if (semesterUnlockBtn) semesterUnlockBtn.hidden = isAdmin;
+      if (semesterModalCsvBtn) semesterModalCsvBtn.hidden = !isAdmin;
+      if (semesterModalPdfBtn) semesterModalPdfBtn.hidden = !isAdmin;
+    }
+
+    function unlockWeeklyAdminExport() {
+      const inputPassword = prompt('請輸入管理員密碼：');
+      if (inputPassword === null) return;
+      if (!String(inputPassword).trim()) {
+        showMessage('請輸入管理員密碼', 'error');
+        return;
+      }
+      const password = String(inputPassword).trim();
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!result || !result.success) {
+            showMessage((result && result.message) || '密碼錯誤，請重新輸入', 'error');
+            return;
+          }
+          if (result.loginType !== 'admin') {
+            showMessage('此功能僅限管理員，一般身份無法匯出。', 'error');
+            return;
+          }
+          try {
+            sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.AUTH_STORAGE_KEY) || 'SCHOOL_SCORE_AUTH', password);
+            sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE', 'admin');
+          } catch (e) {}
+          applyWeeklyAdminUi();
+          showMessage('管理員已登入，可匯出每週／學期排名。', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showMessage('驗證密碼時發生錯誤：' + (error.message || error.toString()), 'error');
+        })
+        .verifyScoreSystemPassword(password);
+    }
+    
     function exportWeeklyStatisticsToCsv() {
       const weekSelect = document.getElementById('weekSelect');
       const weekDate = weekSelect ? weekSelect.value : '';
@@ -2633,6 +2753,135 @@
       }
     }
     
+    function getSemesterDateRangeOrWarn() {
+      const semesterStartDate = document.getElementById('semesterStartDate');
+      const semesterEndDate = document.getElementById('semesterEndDate');
+      const startDate = semesterStartDate ? semesterStartDate.value : '';
+      const endDate = semesterEndDate ? semesterEndDate.value : '';
+      if (!startDate || !endDate) {
+        showMessage('請選擇開始日期和結束日期', 'error');
+        return null;
+      }
+      if (startDate > endDate) {
+        showMessage('開始日期不能晚於結束日期', 'error');
+        return null;
+      }
+      return { startDate: startDate, endDate: endDate };
+    }
+
+    function closeSemesterExportModal() {
+      const overlay = document.getElementById('semesterExportModal');
+      if (overlay) overlay.style.display = 'none';
+    }
+
+    function showSemesterPdfReady(result) {
+      const viewUrl = (result && result.docUrl) || '';
+      const downloadUrl = weeklyPdfDownloadUrlFromResult(result);
+      const modal = document.getElementById('semesterExportModal');
+      const info = document.getElementById('semesterExportInfo');
+      const linkWrap = document.getElementById('semesterPdfLinkWrap');
+      if (info) {
+        info.textContent = '已產生學期績優班級 PDF' +
+          (result && result.startDate && result.endDate
+            ? '（' + result.startDate + ' ~ ' + result.endDate + '）'
+            : '') + '。';
+      }
+      if (linkWrap) {
+        const href = downloadUrl || viewUrl;
+        linkWrap.innerHTML = href
+          ? '<a class="weekly-pdf-download-link" href="' + href + '" target="_blank" rel="noopener">點此下載／開啟 PDF</a>'
+          : '<span style="color:#c62828;">找不到下載連結</span>';
+      }
+      if (modal) modal.style.display = 'flex';
+    }
+
+    function exportSemesterStatisticsToCsv() {
+      try {
+        if (!isAdminSession()) {
+          showMessage('請先以管理員身分解鎖匯出功能', 'error');
+          return;
+        }
+        const range = getSemesterDateRangeOrWarn();
+        if (!range) return;
+        const btn = document.getElementById('semesterExportBtn');
+        const modalBtn = document.getElementById('semesterModalCsvBtn');
+        if (btn) btn.disabled = true;
+        if (modalBtn) modalBtn.disabled = true;
+        showMessage('匯出學期 CSV 中...', 'info');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (btn) btn.disabled = false;
+            if (modalBtn) modalBtn.disabled = false;
+            if (!result || !result.success) {
+              showMessage((result && result.message) || '匯出學期 CSV 失敗', 'error');
+              return;
+            }
+            if (!result.csvContent) {
+              showMessage('無法取得 CSV 內容', 'error');
+              return;
+            }
+            try {
+              const filename = result.filename || 'semester_stats.csv';
+              const blob = new Blob([result.csvContent], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              showMessage('學期 CSV 下載完成', 'success');
+            } catch (err) {
+              showMessage('下載 CSV 時發生錯誤：' + (err.message || err.toString()), 'error');
+            }
+          })
+          .withFailureHandler(function(error) {
+            if (btn) btn.disabled = false;
+            if (modalBtn) modalBtn.disabled = false;
+            showMessage('匯出學期 CSV 失敗：' + (error.message || error.toString()), 'error');
+          })
+          .exportSemesterStatisticsCsv(range.startDate, range.endDate);
+      } catch (err) {
+        showMessage('匯出學期 CSV 時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+
+    function exportSemesterStatisticsToPdf() {
+      try {
+        if (!isAdminSession()) {
+          showMessage('請先以管理員身分解鎖匯出功能', 'error');
+          return;
+        }
+        const range = getSemesterDateRangeOrWarn();
+        if (!range) return;
+        const btn = document.getElementById('semesterExportPdfBtn');
+        const modalBtn = document.getElementById('semesterModalPdfBtn');
+        if (btn) btn.disabled = true;
+        if (modalBtn) modalBtn.disabled = true;
+        showMessage('匯出學期 PDF 中...', 'info');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (btn) btn.disabled = false;
+            if (modalBtn) modalBtn.disabled = false;
+            if (!result || !result.success) {
+              showMessage((result && result.message) || '匯出學期 PDF 失敗', 'error');
+              return;
+            }
+            showSemesterPdfReady(result);
+            showMessage('已產生學期 PDF，請點視窗中的連結下載。', 'success');
+          })
+          .withFailureHandler(function(error) {
+            if (btn) btn.disabled = false;
+            if (modalBtn) modalBtn.disabled = false;
+            showMessage('匯出學期 PDF 失敗：' + (error.message || error.toString()), 'error');
+          })
+          .exportSemesterStatisticsPdf(range.startDate, range.endDate);
+      } catch (err) {
+        showMessage('匯出學期 PDF 時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+
     // 顯示學期總成績統計
     function displaySemesterStatistics(result) {
       const semesterModalOverlay = document.getElementById('semesterModalOverlay');
@@ -2646,14 +2895,21 @@
       let html = '<p style="text-align: center; color: #666; margin-bottom: 12px; font-size: 16px; font-weight: bold;">';
       html += '統計期間：' + result.startDate + ' ~ ' + result.endDate;
       html += '</p>';
-      html += '<p style="text-align: center; color: #888; margin-bottom: 20px; font-size: 14px;">學期成績 = 各週總分加總 ÷ 有評分的週數；跳過的班當週為 75 分（75+0）</p>';
+      html += '<p style="text-align: center; color: #888; margin-bottom: 12px; font-size: 14px;">學期成績 = 各週總分加總 ÷ 有評分的週數；跳過的班當週為 75 分（75+0）</p>';
+      html += '<p style="text-align: center; color: #888; margin-bottom: 20px; font-size: 13px;">授獎：特優 3、優勝 3（可並列）；普通／服務不占名額，達標並列並註 4</p>';
       
       // 如果沒有統計資料
       if (Object.keys(statistics).length === 0) {
         html += '<p style="text-align: center; color: #999; padding: 40px;">所選期間內沒有評分記錄</p>';
         semesterModalContent.innerHTML = html;
+        applyWeeklyAdminUi();
         semesterModalOverlay.style.display = 'flex';
         return;
+      }
+
+      function awardBadgeText(classroom, fallback) {
+        const label = classroom.awardLabel || fallback;
+        return label + (classroom.note4 ? '註4' : '');
       }
       
       grades.forEach(function(grade) {
@@ -2665,18 +2921,18 @@
         html += '<div class="weekly-stats-grade">';
         html += '<h3>' + grade + '（共 ' + gradeStats.totalClassrooms + ' 間教室）</h3>';
         
-        // 特優（學期第1名）
+        // 特優（一般科前 3，可並列；普通／服務達標並列註4）
         if (gradeStats.top3 && gradeStats.top3.length > 0) {
           html += '<div class="weekly-stats-group">';
           html += '<h4>🏆 特優</h4>';
           html += '<table class="weekly-stats-table">';
-          html += '<thead><tr><th>名次</th><th>教室</th><th>學期成績</th><th>評分週次</th></tr></thead>';
+          html += '<thead><tr><th>授獎</th><th>教室</th><th>學期成績</th><th>評分週次</th></tr></thead>';
           html += '<tbody>';
           gradeStats.top3.forEach(function(classroom) {
             const rankClass = 'rank-1';
             const semesterScore = formatOrderWeeklyTotal(classroom.totalScore, semesterBase);
             html += '<tr>';
-            html += '<td><span class="rank-badge ' + rankClass + '">第' + classroom.rank + '名</span></td>';
+            html += '<td><span class="rank-badge ' + rankClass + '">' + awardBadgeText(classroom, '特優') + '</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
             html += '<td><span class="score-badge ' + semesterScore.scoreClass + '">' + semesterScore.text + '</span></td>';
             html += '<td>' + (classroom.scoredWeeks || 0) + ' 週</td>';
@@ -2686,17 +2942,17 @@
           html += '</div>';
         }
         
-        // 優勝（學期第2-3名）
+        // 優勝（一般科第 4～6，可並列）
         if (gradeStats.excellent3 && gradeStats.excellent3.length > 0) {
           html += '<div class="weekly-stats-group">';
           html += '<h4>⭐ 優勝</h4>';
           html += '<table class="weekly-stats-table">';
-          html += '<thead><tr><th>名次</th><th>教室</th><th>學期成績</th><th>評分週次</th></tr></thead>';
+          html += '<thead><tr><th>授獎</th><th>教室</th><th>學期成績</th><th>評分週次</th></tr></thead>';
           html += '<tbody>';
           gradeStats.excellent3.forEach(function(classroom) {
             const semesterScore = formatOrderWeeklyTotal(classroom.totalScore, semesterBase);
             html += '<tr>';
-            html += '<td><span class="rank-badge rank-bottom">第' + classroom.rank + '名</span></td>';
+            html += '<td><span class="rank-badge rank-bottom">' + awardBadgeText(classroom, '優勝') + '</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
             html += '<td><span class="score-badge ' + semesterScore.scoreClass + '">' + semesterScore.text + '</span></td>';
             html += '<td>' + (classroom.scoredWeeks || 0) + ' 週</td>';
@@ -2706,25 +2962,7 @@
           html += '</div>';
         }
         
-        // 待改進
-        if (gradeStats.bottom3 && gradeStats.bottom3.length > 0) {
-          html += '<div class="weekly-stats-group">';
-          html += '<h4>⚠️ 待改進</h4>';
-          html += '<table class="weekly-stats-table">';
-          html += '<thead><tr><th>名次</th><th>教室</th><th>學期成績</th><th>評分週次</th></tr></thead>';
-          html += '<tbody>';
-          gradeStats.bottom3.forEach(function(classroom) {
-            const semesterScore = formatOrderWeeklyTotal(classroom.totalScore, semesterBase);
-            html += '<tr>';
-            html += '<td><span class="rank-badge rank-warning">第' + classroom.rank + '名</span></td>';
-            html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
-            html += '<td><span class="score-badge ' + semesterScore.scoreClass + '">' + semesterScore.text + '</span></td>';
-            html += '<td>' + (classroom.scoredWeeks || 0) + ' 週</td>';
-            html += '</tr>';
-          });
-          html += '</tbody></table>';
-          html += '</div>';
-        }
+        // 學期「待改進」先隱藏（資料仍由後端計算，需要時可再打開）
         
         // 完整排名（可選，如果需要顯示所有班級）
         if (gradeStats.allClassrooms && gradeStats.allClassrooms.length > 0) {
@@ -2760,6 +2998,7 @@
       });
       
       semesterModalContent.innerHTML = html;
+      applyWeeklyAdminUi();
       semesterModalOverlay.style.display = 'flex';
     }
     

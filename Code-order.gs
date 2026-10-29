@@ -1723,6 +1723,7 @@ function getWeeklyHonorPdfConfig_() {
     contestShort: '秩序',
     specialKeywords: ['普通', '服務'],
     useNote4: true,
+    excellentLabel: '優勝',
     notes: [
       '一、 週評比取前 6 名，週評分總表如附件。',
       '二、 每週二前由學務處統一公佈績優班級及名次。',
@@ -2056,11 +2057,12 @@ function buildHonorAwardLists_(rankedData, grades, config) {
     applyAwardRanks_(regular);
 
     const rows = [];
+    const excellentLabel = (config && config.excellentLabel) ? config.excellentLabel : '優等';
     regular.filter(function(c) { return c.awardRank <= 3; }).forEach(function(c) {
       rows.push({ label: '特優', name: formatHonorClassName_(c.classroomName) });
     });
     regular.filter(function(c) { return c.awardRank >= 4 && c.awardRank <= 6; }).forEach(function(c) {
-      rows.push({ label: '優勝', name: formatHonorClassName_(c.classroomName) });
+      rows.push({ label: excellentLabel, name: formatHonorClassName_(c.classroomName) });
     });
 
     const awardees = regular.filter(function(c) { return c.awardRank <= 6; });
@@ -2070,7 +2072,7 @@ function buildHonorAwardLists_(rankedData, grades, config) {
     special.forEach(function(c) {
       if (cutoff === null || c.totalScore < cutoff) return;
       const isTop = topCutoff !== null && c.totalScore >= topCutoff;
-      const base = isTop ? '特優' : '優勝';
+      const base = isTop ? '特優' : excellentLabel;
       rows.push({
         label: base + (config.useNote4 ? '註4' : ''),
         name: formatHonorClassName_(c.classroomName)
@@ -2134,7 +2136,93 @@ function formatHonorSubtitleRaw_(meta) {
 }
 
 function formatHonorSubtitle_(meta) {
+  if (meta && meta.isSemester) {
+    const year = String(meta.schoolYear).split('').join(' ');
+    return year + ' 學年度第 ' + meta.semester + ' 學期(' + meta.dateRange + ')';
+  }
   return spaceCjkTitle_(formatHonorSubtitleRaw_(meta));
+}
+
+/** 學期績優班級 PDF 設定（特優 3、優勝 3，普通／服務註4） */
+function getSemesterHonorPdfConfig_() {
+  return {
+    contestShort: '秩序',
+    specialKeywords: ['普通', '服務'],
+    useNote4: true,
+    excellentLabel: '優勝',
+    notes: [
+      '一、 學期評比取前 6 名（特優 3 名、優勝 3 名），若因名次重複而超過 6 個班級，則增額授獎。',
+      '二、 由學務處統一公佈績優班級及名次。',
+      '三、 利用集會時機統一頒發獎狀，如無集會時機，則由學務主任召集受獎班級班長頒發。',
+      '四、 服務科及普通科之評分，不與一般科班評比排序，惟仍依得分並列名次'
+    ]
+  };
+}
+
+function getHonorSemesterMeta_(startDate, endDate) {
+  const tz = Session.getScriptTimeZone();
+  const start = new Date(startDate + ' 00:00:00');
+  const end = new Date(endDate + ' 00:00:00');
+  const month = start.getMonth() + 1;
+  const year = start.getFullYear();
+  const schoolYear = month >= 8 ? year - 1911 : year - 1912;
+  const semester = (month >= 8 || month <= 1) ? 1 : 2;
+  const dateRange = Utilities.formatDate(start, tz, 'M/d') + '-' +
+    Utilities.formatDate(end, tz, 'M/d');
+  return {
+    schoolYear: schoolYear,
+    semester: semester,
+    weekNum: null,
+    isSemester: true,
+    dateRange: dateRange,
+    startDate: Utilities.formatDate(start, tz, 'yyyy-MM-dd'),
+    endDate: Utilities.formatDate(end, tz, 'yyyy-MM-dd')
+  };
+}
+
+/**
+ * 學期授獎分桶：一般科占特優 1～3、優勝 4～6；普通／服務不占名額，依得分並列（註4）。
+ */
+function buildSemesterAwardBuckets_(allClassrooms, config) {
+  const cfg = config || getSemesterHonorPdfConfig_();
+  const excellentLabel = cfg.excellentLabel || '優勝';
+  const regular = [];
+  const special = [];
+  (allClassrooms || []).forEach(function(cls) {
+    if (isHonorSpecialClass_(cls.classroomName, cfg.specialKeywords || [])) {
+      special.push(cls);
+    } else {
+      regular.push(cls);
+    }
+  });
+  regular.sort(function(a, b) { return b.totalScore - a.totalScore; });
+  special.sort(function(a, b) { return b.totalScore - a.totalScore; });
+  applyAwardRanks_(regular);
+
+  const top3 = [];
+  const excellent3 = [];
+  regular.filter(function(c) { return c.awardRank <= 3; }).forEach(function(c) {
+    top3.push(Object.assign({}, c, { awardLabel: '特優', note4: false }));
+  });
+  regular.filter(function(c) { return c.awardRank >= 4 && c.awardRank <= 6; }).forEach(function(c) {
+    excellent3.push(Object.assign({}, c, { awardLabel: excellentLabel, note4: false }));
+  });
+
+  const awardees = regular.filter(function(c) { return c.awardRank <= 6; });
+  const cutoff = awardees.length ? awardees[awardees.length - 1].totalScore : null;
+  const topRegular = regular.filter(function(c) { return c.awardRank <= 3; });
+  const topCutoff = topRegular.length ? topRegular[topRegular.length - 1].totalScore : null;
+  special.forEach(function(c) {
+    if (cutoff === null || c.totalScore < cutoff) return;
+    const isTop = topCutoff !== null && c.totalScore >= topCutoff;
+    const item = Object.assign({}, c, {
+      awardLabel: isTop ? '特優' : excellentLabel,
+      note4: !!cfg.useNote4
+    });
+    if (isTop) top3.push(item);
+    else excellent3.push(item);
+  });
+  return { top3: top3, excellent3: excellent3, regular: regular, special: special };
 }
 
 function honorTitleHtml_(contestShort) {
@@ -3602,18 +3690,16 @@ function getSemesterStatistics(startDate, endDate, grade) {
       });
     });
     
-    // 轉換為陣列並排序，找出特優和優勝（處理同分名次）
+    // 轉換為陣列並排序；特優 3、優勝 3（可並列），普通／服務不占一般科 1～6 名額
     const result = {};
+    const awardConfig = getSemesterHonorPdfConfig_();
     
     Object.keys(gradeGroups).forEach(gradeKey => {
       const classrooms = Object.values(gradeGroups[gradeKey]);
       
-      // 按總分降序排序（分數越高越好）
+      // 按總分降序排序（分數越高越好）— 完整排名仍含全部班級
       classrooms.sort((a, b) => b.totalScore - a.totalScore);
       
-      // 依總分計算名次：
-      // - 同分者名次相同
-      // - 例如第4、5、6名同分，三者皆為第4名，下一名為第7名
       const rankedClassrooms = [];
       let lastScore = null;
       let currentRank = 0;
@@ -3624,17 +3710,12 @@ function getSemesterStatistics(startDate, endDate, grade) {
           currentRank = i + 1;
           lastScore = cls.totalScore;
         }
-        rankedClassrooms.push({
-          rank: currentRank,
-          ...cls
-        });
+        rankedClassrooms.push(Object.assign({}, cls, { rank: currentRank }));
       }
-      
-      // 特優：學期第1名（同分並列）
-      const top3 = rankedClassrooms.filter(c => c.rank <= 1);
-      
-      // 優勝：學期第2-3名
-      const excellent3 = rankedClassrooms.filter(c => c.rank >= 2 && c.rank <= 3);
+
+      const buckets = buildSemesterAwardBuckets_(rankedClassrooms, awardConfig);
+      const top3 = buckets.top3;
+      const excellent3 = buckets.excellent3;
       
       // 待改進：最後「三個位置」往後擴展，將同分者一起納入
       let bottom3 = [];
@@ -3672,6 +3753,183 @@ function getSemesterStatistics(startDate, endDate, grade) {
     return {
       success: false,
       error: error.toString()
+    };
+  }
+}
+
+/**
+ * 匯出學期績優班級 PDF（版面比照每週績優 PDF）
+ */
+function exportSemesterStatisticsPdf(startDate, endDate) {
+  try {
+    if (!startDate || !endDate) {
+      return { success: false, message: '請指定開始日期和結束日期' };
+    }
+    const semester = getSemesterStatistics(startDate, endDate, '');
+    if (!semester || semester.success === false) {
+      return {
+        success: false,
+        message: '無法取得學期統計資料：' + (semester && semester.error ? semester.error : '未知錯誤')
+      };
+    }
+
+    const config = getSemesterHonorPdfConfig_();
+    const grades = ['一年級', '二年級', '三年級'];
+    const rankedData = {};
+    grades.forEach(function(grade) {
+      const gradeStats = (semester.statistics && semester.statistics[grade]) || null;
+      rankedData[grade] = {
+        allClassrooms: gradeStats && gradeStats.allClassrooms ? gradeStats.allClassrooms.slice() : []
+      };
+    });
+    const awardLists = buildHonorAwardLists_(rankedData, grades, config);
+    const meta = getHonorSemesterMeta_(semester.startDate, semester.endDate);
+
+    const pdfName = meta.schoolYear + '-' + meta.semester + '_學期' + config.contestShort + '績優班級.pdf';
+    trashDriveFilesByName_(pdfName);
+
+    let pdfFile;
+    try {
+      pdfFile = exportHonorHtmlToPdfFile_(buildHonorFormHtml_(meta, awardLists, grades, config), pdfName);
+    } catch (htmlErr) {
+      Logger.log('學期 HTML 楷體 PDF 失敗，改用試算表匯出：' + htmlErr.toString());
+      const ss = SpreadsheetApp.create('_tmp_semester_honor_' + new Date().getTime());
+      const sheet = ss.getSheets()[0];
+      sheet.setName('學期績優班級');
+      fillHonorFormSheet_(sheet, meta, awardLists, grades, config);
+      SpreadsheetApp.flush();
+      pdfFile = exportSheetToPdfFile_(ss, sheet, pdfName);
+      try {
+        DriveApp.getFileById(ss.getId()).setTrashed(true);
+      } catch (trashErr) {
+        Logger.log('暫存試算表刪除失敗：' + trashErr.toString());
+      }
+    }
+    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    const fileId = pdfFile.getId();
+    return {
+      success: true,
+      message: '已產生學期績優班級 PDF',
+      docUrl: pdfFile.getUrl(),
+      downloadUrl: 'https://drive.google.com/uc?export=download&id=' + fileId,
+      fileId: fileId,
+      startDate: semester.startDate,
+      endDate: semester.endDate
+    };
+  } catch (error) {
+    Logger.log('exportSemesterStatisticsPdf 發生錯誤：' + error.toString());
+    return {
+      success: false,
+      message: '匯出學期 PDF 時發生錯誤：' + error.toString()
+    };
+  }
+}
+
+/**
+ * 匯出學期總成績 CSV（績優名單 + 各年級完整排名）
+ */
+function exportSemesterStatisticsCsv(startDate, endDate) {
+  try {
+    if (!startDate || !endDate) {
+      return { success: false, message: '請指定開始日期和結束日期' };
+    }
+    const semester = getSemesterStatistics(startDate, endDate, '');
+    if (!semester || semester.success === false) {
+      return {
+        success: false,
+        message: '無法取得學期統計資料：' + (semester && semester.error ? semester.error : '未知錯誤')
+      };
+    }
+
+    const config = getSemesterHonorPdfConfig_();
+    const grades = ['一年級', '二年級', '三年級'];
+    const meta = getHonorSemesterMeta_(semester.startDate, semester.endDate);
+    const lines = [];
+    const csvEsc = function(val) {
+      const text = String(val == null ? '' : val);
+      if (/[",\r\n]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
+      return text;
+    };
+
+    lines.push('中正高工生活榮譽競賽秩序評比績優班級（學期）');
+    lines.push(meta.schoolYear + '學年度第' + meta.semester + '學期(' + meta.dateRange + ')');
+    lines.push('');
+    lines.push('高一,,高二,,高三');
+    lines.push('名次,班級,名次,班級,名次,班級');
+
+    const rankedData = {};
+    grades.forEach(function(grade) {
+      const gradeStats = (semester.statistics && semester.statistics[grade]) || null;
+      rankedData[grade] = {
+        allClassrooms: gradeStats && gradeStats.allClassrooms ? gradeStats.allClassrooms.slice() : []
+      };
+    });
+    const awardLists = buildHonorAwardLists_(rankedData, grades, config);
+    let maxRows = 0;
+    grades.forEach(function(grade) {
+      maxRows = Math.max(maxRows, (awardLists[grade] || []).length);
+    });
+    for (let i = 0; i < maxRows; i++) {
+      const row = [];
+      grades.forEach(function(grade) {
+        const rows = awardLists[grade] || [];
+        if (i < rows.length) {
+          row.push(csvEsc(rows[i].label), csvEsc(rows[i].name));
+        } else {
+          row.push('', '');
+        }
+      });
+      lines.push(row.join(','));
+    }
+
+    lines.push('');
+    lines.push('附記');
+    (config.notes || []).forEach(function(note) {
+      lines.push(csvEsc(note));
+    });
+    lines.push('');
+    lines.push('各年級完整排名');
+    lines.push(['年級', '名次', '班級', '學期成績', '評分週次', '授獎'].join(','));
+
+    grades.forEach(function(grade) {
+      const gradeStats = (semester.statistics && semester.statistics[grade]) || null;
+      if (!gradeStats || !gradeStats.allClassrooms) return;
+      const buckets = buildSemesterAwardBuckets_(gradeStats.allClassrooms, config);
+      const awardMap = {};
+      buckets.top3.concat(buckets.excellent3).forEach(function(item) {
+        const key = item.classroomName || '';
+        awardMap[key] = (item.awardLabel || '') + (item.note4 ? '註4' : '');
+      });
+      gradeStats.allClassrooms.forEach(function(cls) {
+        lines.push([
+          csvEsc(grade),
+          cls.rank,
+          csvEsc(cls.classroomName || ''),
+          cls.totalScore,
+          cls.scoredWeeks || 0,
+          csvEsc(awardMap[cls.classroomName] || '')
+        ].join(','));
+      });
+    });
+
+    const csvContent = '\uFEFF' + lines.join('\r\n');
+    const filename = '學期排名_' + String(semester.startDate || '').replace(/-/g, '') +
+      '_' + String(semester.endDate || '').replace(/-/g, '') + '.csv';
+
+    return {
+      success: true,
+      message: '已產生學期總成績 CSV',
+      filename: filename,
+      csvContent: csvContent,
+      startDate: semester.startDate,
+      endDate: semester.endDate
+    };
+  } catch (error) {
+    Logger.log('exportSemesterStatisticsCsv 發生錯誤：' + error.toString());
+    return {
+      success: false,
+      message: '匯出學期 CSV 時發生錯誤：' + error.toString()
     };
   }
 }
@@ -3955,6 +4213,10 @@ function dispatchAction_(action, args, authPassword) {
       return exportWeeklyStatisticsToSheet(args[0]);
     case 'getSemesterStatistics':
       return getSemesterStatistics(args[0], args[1], args[2]);
+    case 'exportSemesterStatisticsCsv':
+      return exportSemesterStatisticsCsv(args[0], args[1]);
+    case 'exportSemesterStatisticsPdf':
+      return exportSemesterStatisticsPdf(args[0], args[1]);
     case 'getViewScoresUrl':
       return '';
     case 'getScoreSystemUrl':

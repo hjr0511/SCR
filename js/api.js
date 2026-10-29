@@ -16,7 +16,9 @@
     finalizePhotoUpload: true,
     exportWeeklyStatisticsCsv: true,
     exportWeeklyStatisticsPdf: true,
-    exportWeeklyStatisticsToSheet: true
+    exportWeeklyStatisticsToSheet: true,
+    exportSemesterStatisticsCsv: true,
+    exportSemesterStatisticsPdf: true
   };
 
   function getUrl() {
