@@ -1080,11 +1080,10 @@
           <p class="hint-text">不選擇則顯示所有年級的統計</p>
         </div>
         
-        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+        <div class="btn-row">
           <button type="button" class="search-btn" id="semesterStatsBtn">查詢學期總成績</button>
-          <button type="button" class="search-btn secondary" id="semesterExportBtn" hidden>匯出學期 CSV</button>
-          <button type="button" class="search-btn" id="semesterExportPdfBtn" hidden style="background-color: #7e57c2;">匯出學期 PDF</button>
-          <button type="button" class="search-btn" id="semesterAdminUnlockBtn" style="background-color:#546e7a;">管理員解鎖匯出</button>
+          <button type="button" class="search-btn secondary" id="semesterExportBtn">匯出每學期排名(CSV)</button>
+          <button type="button" class="search-btn" id="semesterExportPdfBtn" style="background-color: #7e57c2;">匯出每學期 PDF</button>
         </div>
         <p class="hint-text" style="margin-top:8px;">學期授獎：特優 3 名、優勝 3 名（可並列）；普通科／服務科不占一般科 1～6 名額，達標並列並註 4。</p>
       </div>
@@ -1101,8 +1100,8 @@
         <h3>學期總成績統計</h3>
         <div id="semesterModalContent"></div>
         <div class="export-modal-buttons">
-          <button type="button" class="search-btn secondary" id="semesterModalCsvBtn" hidden>下載 CSV</button>
-          <button type="button" class="search-btn" id="semesterModalPdfBtn" hidden style="background-color: #7e57c2;">下載 PDF</button>
+          <button type="button" class="search-btn secondary" id="semesterModalCsvBtn">匯出每學期排名(CSV)</button>
+          <button type="button" class="search-btn" id="semesterModalPdfBtn" style="background-color: #7e57c2;">匯出每學期 PDF</button>
           <button type="button" class="search-btn" id="semesterModalCloseBtn" style="background-color: #777;">關閉</button>
         </div>
       </div>
@@ -1366,12 +1365,6 @@
       if (semesterExportPdfBtn) {
         semesterExportPdfBtn.addEventListener('click', function() {
           exportSemesterStatisticsToPdf();
-        });
-      }
-      const semesterAdminUnlockBtn = document.getElementById('semesterAdminUnlockBtn');
-      if (semesterAdminUnlockBtn) {
-        semesterAdminUnlockBtn.addEventListener('click', function() {
-          unlockWeeklyAdminExport();
         });
       }
       const semesterModalCsvBtn = document.getElementById('semesterModalCsvBtn');
@@ -2270,55 +2263,20 @@
     }
 
     function applyWeeklyAdminUi() {
-      const isAdmin = isAdminSession();
-      const csvBtn = document.getElementById('weeklyExportBtn');
-      const pdfBtn = document.getElementById('weeklyExportPdfBtn');
+      // 每週／學期匯出按鈕一律顯示，不需管理員解鎖
+      const ids = [
+        'weeklyExportBtn', 'weeklyExportPdfBtn',
+        'semesterExportBtn', 'semesterExportPdfBtn',
+        'semesterModalCsvBtn', 'semesterModalPdfBtn'
+      ];
+      ids.forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) el.hidden = false;
+      });
       const unlockBtn = document.getElementById('weeklyAdminUnlockBtn');
-      if (csvBtn) csvBtn.hidden = !isAdmin;
-      if (pdfBtn) pdfBtn.hidden = !isAdmin;
-      if (unlockBtn) unlockBtn.hidden = isAdmin;
-
-      const semesterCsvBtn = document.getElementById('semesterExportBtn');
-      const semesterPdfBtn = document.getElementById('semesterExportPdfBtn');
+      if (unlockBtn) unlockBtn.hidden = true;
       const semesterUnlockBtn = document.getElementById('semesterAdminUnlockBtn');
-      const semesterModalCsvBtn = document.getElementById('semesterModalCsvBtn');
-      const semesterModalPdfBtn = document.getElementById('semesterModalPdfBtn');
-      if (semesterCsvBtn) semesterCsvBtn.hidden = !isAdmin;
-      if (semesterPdfBtn) semesterPdfBtn.hidden = !isAdmin;
-      if (semesterUnlockBtn) semesterUnlockBtn.hidden = isAdmin;
-      if (semesterModalCsvBtn) semesterModalCsvBtn.hidden = !isAdmin;
-      if (semesterModalPdfBtn) semesterModalPdfBtn.hidden = !isAdmin;
-    }
-
-    function unlockWeeklyAdminExport() {
-      const inputPassword = prompt('請輸入管理員密碼：');
-      if (inputPassword === null) return;
-      if (!String(inputPassword).trim()) {
-        showMessage('請輸入管理員密碼', 'error');
-        return;
-      }
-      const password = String(inputPassword).trim();
-      google.script.run
-        .withSuccessHandler(function(result) {
-          if (!result || !result.success) {
-            showMessage((result && result.message) || '密碼錯誤，請重新輸入', 'error');
-            return;
-          }
-          if (result.loginType !== 'admin') {
-            showMessage('此功能僅限管理員，一般身份無法匯出。', 'error');
-            return;
-          }
-          try {
-            sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.AUTH_STORAGE_KEY) || 'SCHOOL_SCORE_AUTH', password);
-            sessionStorage.setItem((window.APP_CONFIG && window.APP_CONFIG.LOGIN_TYPE_KEY) || 'SCHOOL_SCORE_LOGIN_TYPE', 'admin');
-          } catch (e) {}
-          applyWeeklyAdminUi();
-          showMessage('管理員已登入，可匯出每週／學期排名。', 'success');
-        })
-        .withFailureHandler(function(error) {
-          showMessage('驗證密碼時發生錯誤：' + (error.message || error.toString()), 'error');
-        })
-        .verifyScoreSystemPassword(password);
+      if (semesterUnlockBtn) semesterUnlockBtn.hidden = true;
     }
     
     function exportWeeklyStatisticsToCsv() {
@@ -2797,10 +2755,6 @@
 
     function exportSemesterStatisticsToCsv() {
       try {
-        if (!isAdminSession()) {
-          showMessage('請先以管理員身分解鎖匯出功能', 'error');
-          return;
-        }
         const range = getSemesterDateRangeOrWarn();
         if (!range) return;
         const btn = document.getElementById('semesterExportBtn');
@@ -2849,10 +2803,6 @@
 
     function exportSemesterStatisticsToPdf() {
       try {
-        if (!isAdminSession()) {
-          showMessage('請先以管理員身分解鎖匯出功能', 'error');
-          return;
-        }
         const range = getSemesterDateRangeOrWarn();
         if (!range) return;
         const btn = document.getElementById('semesterExportPdfBtn');

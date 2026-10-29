@@ -16,9 +16,7 @@
     finalizePhotoUpload: true,
     exportWeeklyStatisticsCsv: true,
     exportWeeklyStatisticsPdf: true,
-    exportWeeklyStatisticsToSheet: true,
-    exportSemesterStatisticsCsv: true,
-    exportSemesterStatisticsPdf: true
+    exportWeeklyStatisticsToSheet: true
   };
 
   function getUrl() {
@@ -292,6 +290,7 @@
     if (action === 'uploadPhotoChunk') return 20000;
     if (action === 'finalizePhotoUpload' || action === 'uploadSinglePhoto') return 40000;
     if (action === 'exportWeeklyStatisticsPdf') return 60000;
+    if (action === 'exportSemesterStatisticsCsv' || action === 'exportSemesterStatisticsPdf') return 120000;
     return 60000;
   }
 
@@ -619,6 +618,10 @@
     }
     if (action === 'exportWeeklyStatisticsPdf') {
       return exportPdfFast(payload);
+    }
+    // 學期匯出可能較大，走 form embed 較穩
+    if (action === 'exportSemesterStatisticsCsv' || action === 'exportSemesterStatisticsPdf') {
+      return formPost(payload, apiTimeoutFor(action));
     }
     return apiRequest(payload, apiTimeoutFor(action));
   }
