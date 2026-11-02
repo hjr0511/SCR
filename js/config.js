@@ -19,13 +19,13 @@ window.APP_CONFIG = {
   CONFIG_FILE: 'js/config.js'
 };
 
-/** 整潔缺失項目。預設每項扣 1 分。1D 為資源、一般垃圾桶，可自行填整數扣分。 */
+/** 整潔缺失項目。勾選後可自行填整數扣分（預設 1）。1D 為資源、一般垃圾桶。 */
 window.CLEAN_SCORE_ITEMS = [
   { code: '1A1', area: '教室區', name: '講桌、講台' },
   { code: '1A2', area: '教室區', name: '黑板' },
   { code: '1B', area: '教室區', name: '桌椅' },
   { code: '1C', area: '教室區', name: '教室地板' },
-  { code: '1D', area: '教室區', name: '資源、一般垃圾桶', customPoints: true },
+  { code: '1D', area: '教室區', name: '資源、一般垃圾桶' },
   { code: '1E', area: '教室區', name: '走廊地板（含水溝）' },
   { code: '1F', area: '教室區', name: '清掃用具' },
   { code: '1G1', area: '教室區', name: '窗戶' },

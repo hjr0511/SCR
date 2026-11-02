@@ -914,8 +914,8 @@
       </div>
       
       <div class="photo-section" id="itemSection">
-        <p class="section-label">缺失項目（預設每項扣 1 分；1D 可自行填整數）</p>
-        <p class="info-text">依評分區域顯示可勾選項目。勾選後會寫進備註，取消勾選就從備註拿掉。代號大小寫都可以，例如 1d 與 1D 都是資源、一般垃圾桶。勾選 1D 後可自行填扣幾分（整數，至少 1）。備註寫上「三年級評二年級」時，也會自動套用 1D（預設扣 1，可改）。</p>
+        <p class="section-label">缺失項目（勾選後可自行填整數扣分）</p>
+        <p class="info-text">依評分區域顯示可勾選項目。勾選後會寫進備註並顯示扣分欄，可填整數（至少 1，預設 1）；取消勾選就從備註拿掉。代號大小寫都可以，例如 1d 與 1D 都是資源、一般垃圾桶。備註寫上「三年級評二年級」時，也會自動套用 1D（預設扣 1，可改）。</p>
         <div id="itemChecks"></div>
         <p class="info-text" id="itemForceHint" style="display: none;"></p>
         <div class="score-summary">
@@ -947,7 +947,7 @@
             <button type="button" class="num-stepper-btn" data-target="directDeduction" data-delta="-0.5" aria-label="直接扣分減 0.5">▼</button>
           </div>
         </div>
-        <p class="info-text">上方勾選的項目已計入扣分（1D 以你填的整數為準，其餘各扣 1），不必再填這裡。只有清單沒有的缺失，才在這裡另外填扣分。</p>
+        <p class="info-text">上方勾選的項目已依你填的整數計入扣分，不必再填這裡。只有清單沒有的缺失，才在這裡另外填扣分。</p>
       </div>
       
       <div class="form-group">
@@ -964,7 +964,7 @@
       
       <div class="form-group">
         <label for="notes">備註</label>
-        <textarea id="notes" name="notes" rows="3" placeholder="勾選的項目會顯示在這裡。可再補充說明。代號大小寫都可以，例如 1d。寫上「三年級評二年級」會自動套用 1D。1D 可自行填扣幾分。勾選其它或樓梯時請註明。"></textarea>
+        <textarea id="notes" name="notes" rows="3" placeholder="勾選的項目會顯示在這裡。可再補充說明。代號大小寫都可以，例如 1d。寫上「三年級評二年級」會自動套用 1D。各項目可自行填扣幾分。勾選其它或樓梯時請註明。"></textarea>
       </div>
       
       <div class="score-summary bonus">
@@ -1078,7 +1078,7 @@
     let currentClassrooms = []; // 儲存當前載入的教室清單（包含順序資訊）
     let cleanItemAutoChecked = false; // 備註「三年級評二年級」自動勾選的 1D
     let cleanItemsAutoFromNotes = {}; // 備註代號（含小寫）自動勾選的項目
-    let clean1DPointsMemory = 1; // 1D 自訂扣分（整數，至少 1）
+    let cleanItemPointsMemory = {}; // 各項目自訂扣分（整數，至少 1）
     let isStudentLogin = false; // 標記是否為學生登入
     let isTeacherLogin = false; // 標記是否為老師登入
     let isAdminLogin = false; // 標記是否為管理員登入
@@ -1130,58 +1130,80 @@
       return (document.getElementById('notes').value || '').indexOf('三年級評二年級') >= 0;
     }
 
-    function normalizeClean1DPoints(value) {
+    function normalizeCleanItemPoints(value) {
       let n = parseInt(value, 10);
       if (!n || n < 1) n = 1;
       return n;
     }
 
-    function getClean1DPoints() {
-      const el = document.getElementById('item1DPoints');
+    function cleanItemPointsInputId(code) {
+      return 'itemPoints_' + String(code || '').replace(/[^0-9A-Za-z]/g, '_');
+    }
+
+    function cleanItemPointsWrapId(code) {
+      return 'itemPointsWrap_' + String(code || '').replace(/[^0-9A-Za-z]/g, '_');
+    }
+
+    function getCleanItemPointsByCode(code) {
+      const key = String(code || '');
+      const el = document.getElementById(cleanItemPointsInputId(key));
       if (el) {
-        clean1DPointsMemory = normalizeClean1DPoints(el.value);
-        el.value = String(clean1DPointsMemory);
+        cleanItemPointsMemory[key] = normalizeCleanItemPoints(el.value);
+        el.value = String(cleanItemPointsMemory[key]);
       }
-      return normalizeClean1DPoints(clean1DPointsMemory);
+      return normalizeCleanItemPoints(cleanItemPointsMemory[key] || 1);
     }
 
-    function setClean1DPoints(value) {
-      clean1DPointsMemory = normalizeClean1DPoints(value);
-      const el = document.getElementById('item1DPoints');
-      if (el) el.value = String(clean1DPointsMemory);
+    function setCleanItemPointsByCode(code, value) {
+      const key = String(code || '');
+      cleanItemPointsMemory[key] = normalizeCleanItemPoints(value);
+      const el = document.getElementById(cleanItemPointsInputId(key));
+      if (el) el.value = String(cleanItemPointsMemory[key]);
     }
 
-    function parseClean1DPointsFromNotes(text) {
+    function parseCleanItemPointsFromNotes(text, code) {
       const source = String(text || '');
+      const wanted = String(code || '');
+      if (!wanted) return null;
+      const item = (window.CLEAN_SCORE_ITEMS || []).filter(function(row) { return row.code === wanted; })[0];
       for (let i = 0; i < source.length; i++) {
-        if (!notesMentionAt(source, i, '1D')) continue;
-        let rest = source.slice(i + 2);
-        rest = rest.replace(/^\s+/, '');
-        const item1D = (window.CLEAN_SCORE_ITEMS || []).filter(function(row) { return row.code === '1D'; })[0];
-        if (item1D && rest.indexOf(item1D.name) === 0) {
-          rest = rest.slice(item1D.name.length);
-        }
+        if (!notesMentionAt(source, i, wanted)) continue;
+        let rest = source.slice(i + wanted.length).replace(/^\s+/, '');
+        if (item && rest.indexOf(item.name) === 0) rest = rest.slice(item.name.length);
         const m = rest.match(/^\s*扣\s*(\d+)/);
-        if (m) return normalizeClean1DPoints(m[1]);
+        if (m) return normalizeCleanItemPoints(m[1]);
         return null;
       }
       return null;
     }
 
+    function parseAllCleanItemPointsFromNotes(text) {
+      (window.CLEAN_SCORE_ITEMS || []).forEach(function(item) {
+        const pts = parseCleanItemPointsFromNotes(text, item.code);
+        if (pts != null) setCleanItemPointsByCode(item.code, pts);
+      });
+    }
+
     function cleanItemPointsLabel(item) {
-      if (item && item.code === '1D') return '扣' + getClean1DPoints();
-      return '扣1';
+      return '扣' + getCleanItemPoints(item);
     }
 
     function getCleanItemPoints(item) {
-      if (item && item.code === '1D') return getClean1DPoints();
-      return 1;
+      if (!item || !item.code) return 1;
+      return getCleanItemPointsByCode(item.code);
     }
 
     function sumSelectedCleanItemPoints(items) {
       return (items || []).reduce(function(sum, item) {
         return sum + getCleanItemPoints(item);
       }, 0);
+    }
+
+    function rememberVisibleCleanItemPoints() {
+      document.querySelectorAll('#itemChecks input[type="number"][data-item-points]').forEach(function(input) {
+        const code = input.getAttribute('data-item-points');
+        if (code) cleanItemPointsMemory[code] = normalizeCleanItemPoints(input.value);
+      });
     }
 
     function getSelectedCleanItems() {
@@ -1304,19 +1326,23 @@
       return notes;
     }
 
-    function updateClean1DPointsVisibility() {
-      const wrap = document.getElementById('item1DPointsWrap');
-      const box = document.querySelector('#itemChecks input[data-code="1D"]');
+    function updateCleanItemPointsVisibility() {
       const force = notesForceClean1D();
-      const show = !!(box && box.checked) || force;
-      if (wrap) {
+      document.querySelectorAll('#itemChecks input[type="checkbox"][data-code]').forEach(function(box) {
+        const code = box.getAttribute('data-code');
+        const wrap = document.getElementById(cleanItemPointsWrapId(code));
+        if (!wrap) return;
+        const show = !!box.checked || (code === '1D' && force);
         if (show) wrap.removeAttribute('hidden');
         else wrap.setAttribute('hidden', '');
-      }
+      });
+      const box1D = document.querySelector('#itemChecks input[data-code="1D"]');
       const orphan = document.getElementById('item1DOrphanRow');
       if (orphan) {
-        orphan.style.display = (!box && force) ? 'flex' : 'none';
+        orphan.style.display = (!box1D && force) ? 'flex' : 'none';
       }
+      const orphanWrap = document.getElementById(cleanItemPointsWrapId('1D'));
+      if (orphanWrap && !box1D && force) orphanWrap.removeAttribute('hidden');
     }
 
     function syncForcedCleanItem() {
@@ -1345,7 +1371,7 @@
           hint.textContent = '';
         }
       }
-      updateClean1DPointsVisibility();
+      updateCleanItemPointsVisibility();
       syncNoteItemCodes();
     }
 
@@ -1356,8 +1382,7 @@
       (window.cleanScoreItemsInNotes ? window.cleanScoreItemsInNotes(noteText) : []).forEach(function(item) {
         noted[item.code] = item;
       });
-      const parsed1D = parseClean1DPointsFromNotes(noteText);
-      if (parsed1D != null) setClean1DPoints(parsed1D);
+      parseAllCleanItemPointsFromNotes(noteText);
       document.querySelectorAll('#itemChecks input[type="checkbox"]').forEach(function(input) {
         const code = input.getAttribute('data-code');
         if (code === '1D' && notesForceClean1D()) return;
@@ -1369,7 +1394,7 @@
           delete cleanItemsAutoFromNotes[code];
         }
       });
-      updateClean1DPointsVisibility();
+      updateCleanItemPointsVisibility();
       const hint = document.getElementById('itemForceHint');
       if (!hint || notesForceClean1D()) return;
       const hidden = Object.keys(noted).filter(function(code) {
@@ -1378,34 +1403,34 @@
       if (!hidden.length) return;
       hint.style.display = 'block';
       hint.textContent = '備註代號不分大小寫，已另計 ' + hidden.map(function(code) {
-        const pts = code === '1D' ? getClean1DPoints() : 1;
-        return code + ' ' + noted[code].name + '扣' + pts;
+        return code + ' ' + noted[code].name + '扣' + getCleanItemPointsByCode(code);
       }).join('、') + '。';
     }
 
-    function buildClean1DPointsWrap() {
+    function buildCleanItemPointsWrap(code) {
       const wrap = document.createElement('span');
       wrap.className = 'check-row-points';
-      wrap.id = 'item1DPointsWrap';
+      wrap.id = cleanItemPointsWrapId(code);
       wrap.setAttribute('hidden', '');
       wrap.appendChild(document.createTextNode('扣'));
       const points = document.createElement('input');
       points.type = 'number';
-      points.id = 'item1DPoints';
+      points.id = cleanItemPointsInputId(code);
+      points.setAttribute('data-item-points', code);
       points.min = '1';
       points.step = '1';
       points.inputMode = 'numeric';
-      points.value = String(normalizeClean1DPoints(clean1DPointsMemory));
-      points.setAttribute('aria-label', '1D 扣幾分');
+      points.value = String(getCleanItemPointsByCode(code));
+      points.setAttribute('aria-label', code + ' 扣幾分');
       points.addEventListener('click', function(e) { e.stopPropagation(); });
       points.addEventListener('mousedown', function(e) { e.stopPropagation(); });
       points.addEventListener('input', function() {
-        setClean1DPoints(points.value);
+        setCleanItemPointsByCode(code, points.value);
         syncNotesFromChecks();
         updateTotalScore();
       });
       points.addEventListener('change', function() {
-        setClean1DPoints(points.value);
+        setCleanItemPointsByCode(code, points.value);
         syncNotesFromChecks();
         updateTotalScore();
       });
@@ -1419,8 +1444,7 @@
       const box = document.getElementById('itemChecks');
       if (!box) return;
       const prev = {};
-      const prevPointsEl = document.getElementById('item1DPoints');
-      if (prevPointsEl) clean1DPointsMemory = normalizeClean1DPoints(prevPointsEl.value);
+      rememberVisibleCleanItemPoints();
       box.querySelectorAll('input[type="checkbox"]').forEach(function(input) {
         prev[input.getAttribute('data-code')] = input.checked;
       });
@@ -1442,7 +1466,7 @@
           input.checked = !!prev[item.code];
           input.addEventListener('change', function() {
             delete cleanItemsAutoFromNotes[item.code];
-            if (item.code === '1D') updateClean1DPointsVisibility();
+            updateCleanItemPointsVisibility();
             syncNotesFromChecks();
             updateTotalScore();
           });
@@ -1450,12 +1474,8 @@
           const codeEl = document.createElement('strong');
           codeEl.textContent = item.code;
           span.appendChild(codeEl);
-          if (item.code === '1D') {
-            span.appendChild(document.createTextNode(item.name + '　'));
-            span.appendChild(buildClean1DPointsWrap());
-          } else {
-            span.appendChild(document.createTextNode(item.name + '　扣 1'));
-          }
+          span.appendChild(document.createTextNode(item.name + '　'));
+          span.appendChild(buildCleanItemPointsWrap(item.code));
           label.appendChild(input);
           label.appendChild(span);
           box.appendChild(label);
@@ -1463,7 +1483,7 @@
       }
 
       // 非教室區但因「三年級評二年級」另計 1D 時，仍提供扣分輸入
-      if (!document.getElementById('item1DPointsWrap')) {
+      if (!document.getElementById(cleanItemPointsWrapId('1D'))) {
         const orphan = document.createElement('div');
         orphan.className = 'check-row';
         orphan.id = 'item1DOrphanRow';
@@ -1473,7 +1493,7 @@
         orphanCode.textContent = '1D';
         orphanSpan.appendChild(orphanCode);
         orphanSpan.appendChild(document.createTextNode('資源、一般垃圾桶　'));
-        orphanSpan.appendChild(buildClean1DPointsWrap());
+        orphanSpan.appendChild(buildCleanItemPointsWrap('1D'));
         orphan.appendChild(orphanSpan);
         box.appendChild(orphan);
       }
@@ -2985,7 +3005,7 @@
       document.getElementById('notes').value = '';
       cleanItemAutoChecked = false;
       cleanItemsAutoFromNotes = {};
-      clean1DPointsMemory = 1;
+      cleanItemPointsMemory = {};
       renderCleanItems();
       // 保留評分人員年級、評分人員類型、評分人員姓名、評分區域、評分時段（已自動儲存）
       
