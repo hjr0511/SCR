@@ -2762,10 +2762,10 @@
             const rankClass = 'rank-1';
             const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
                               classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
-            // 格式化分數：正值顯示正號
             const formattedScore = formatPreciseScore(classroom.totalScore, true);
+            const rankText = classroom.awardLabel || ('第' + classroom.rank + '名');
             html += '<tr>';
-            html += '<td><span class="rank-badge ' + rankClass + '">第' + classroom.rank + '名</span></td>';
+            html += '<td><span class="rank-badge ' + rankClass + '">' + rankText + '</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
             html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
             html += '<td>' + classroom.recordCount + ' 筆</td>';
@@ -2785,10 +2785,10 @@
           gradeStats.excellent3.forEach(function(classroom) {
             const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
                               classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
-            // 格式化分數：正值顯示正號
             const formattedScore = formatPreciseScore(classroom.totalScore, true);
+            const rankText = classroom.awardLabel || ('第' + classroom.rank + '名');
             html += '<tr>';
-            html += '<td><span class="rank-badge rank-bottom">第' + classroom.rank + '名</span></td>';
+            html += '<td><span class="rank-badge rank-bottom">' + rankText + '</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
             html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
             html += '<td>' + classroom.recordCount + ' 筆</td>';
@@ -2808,7 +2808,6 @@
           gradeStats.bottom3.forEach(function(classroom) {
             const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
                               classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
-            // 格式化分數：正值顯示正號
             const formattedScore = formatPreciseScore(classroom.totalScore, true);
             html += '<tr>';
             html += '<td><span class="rank-badge rank-warning">第' + classroom.rank + '名</span></td>';

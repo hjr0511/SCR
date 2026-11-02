@@ -3112,50 +3112,65 @@ function getSemesterStatistics(startDate, endDate, grade) {
       gradeGroups[recordGrade][classroomKey].recordCount += 1;
     });
     
-    // 轉換為陣列並排序，找出特優和優等（處理同分名次）
-    const result = {};
-    
-    Object.keys(gradeGroups).forEach(gradeKey => {
+    // 轉換為陣列並排序；特優／優等與每週相同：普通／服務不占一般科名額（註4）
+    const grades = ['一年級', '二年級', '三年級'];
+    const rankedData = {};
+    Object.keys(gradeGroups).forEach(function(gradeKey) {
       const classrooms = Object.values(gradeGroups[gradeKey]);
-      
-      // 按總分降序排序（分數越高越好）
-      classrooms.sort((a, b) => b.totalScore - a.totalScore);
-      
-      // 依總分計算名次：
-      // - 同分者名次相同
-      // - 例如第4、5、6名同分，三者皆為第4名，下一名為第7名
-      const rankedClassrooms = [];
+      classrooms.sort(function(a, b) { return b.totalScore - a.totalScore; });
       let lastScore = null;
       let currentRank = 0;
-      
-      for (let i = 0; i < classrooms.length; i++) {
-        const cls = classrooms[i];
+      classrooms.forEach(function(cls, index) {
         if (lastScore === null || cls.totalScore !== lastScore) {
-          currentRank = i + 1;
+          currentRank = index + 1;
           lastScore = cls.totalScore;
         }
-        rankedClassrooms.push({
-          rank: currentRank,
-          ...cls
-        });
-      }
-      
-      // 特優：名次 <= 3 的所有班級（可能超過3個，因為同分並列）
-      const top3 = rankedClassrooms.filter(c => c.rank <= 3);
-      
-      // 優等：名次 >= 4 起取約 3 名，同分增額
-      const excellent3 = pickHonorExcellentWithTies_(rankedClassrooms);
-      
-      // 待改進：最後「三個位置」往後擴展，將同分者一起納入
+        cls.rank = currentRank;
+      });
+      rankedData[gradeKey] = { allClassrooms: classrooms };
+    });
+
+    const config = getWeeklyHonorPdfConfig_();
+    const awardLists = buildHonorAwardLists_(rankedData, grades, config);
+    const result = {};
+
+    const gradeKeys = Object.keys(gradeGroups);
+    gradeKeys.forEach(function(gradeKey) {
+      const rankedClassrooms = (rankedData[gradeKey] && rankedData[gradeKey].allClassrooms) || [];
+      const byName = {};
+      rankedClassrooms.forEach(function(c) {
+        byName[c.classroomName] = c;
+      });
+      const top3 = [];
+      const excellent3 = [];
+      (awardLists[gradeKey] || []).forEach(function(row) {
+        const cls = byName[row.name];
+        if (!cls) return;
+        const item = {
+          rank: cls.rank,
+          classroomId: cls.classroomId,
+          classroomName: cls.classroomName,
+          grade: cls.grade,
+          totalScore: cls.totalScore,
+          recordCount: cls.recordCount,
+          awardLabel: row.label
+        };
+        if (String(row.label).indexOf('特優') === 0) top3.push(item);
+        else excellent3.push(item);
+      });
+
+      // 待改進：仍依全班分數（含普通／服務）
       let bottom3 = [];
       if (rankedClassrooms.length <= 3) {
         bottom3 = rankedClassrooms.slice();
       } else {
         const thresholdIndex = Math.max(0, rankedClassrooms.length - 3);
         const thresholdScore = rankedClassrooms[thresholdIndex].totalScore;
-        bottom3 = rankedClassrooms.filter(c => c.totalScore <= thresholdScore);
+        bottom3 = rankedClassrooms.filter(function(c) {
+          return c.totalScore <= thresholdScore;
+        });
       }
-      
+
       result[gradeKey] = {
         grade: gradeKey,
         totalClassrooms: rankedClassrooms.length,
