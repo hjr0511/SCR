@@ -170,6 +170,10 @@
       .info-text {
         font-size: 15px;
       }
+
+      .check-row {
+        font-size: 17px;
+      }
       
       .grade-info {
         font-size: 15px;
@@ -527,6 +531,28 @@
       font-size: 14px;
       margin-top: 5px;
     }
+
+    .check-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 8px 0;
+      font-weight: normal;
+      color: #333;
+      cursor: pointer;
+      line-height: 1.45;
+    }
+
+    .check-row input {
+      width: 20px;
+      height: 20px;
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+
+    .check-row strong {
+      margin-right: 6px;
+    }
     
     .grade-info {
       background-color: #e7f3ff;
@@ -864,6 +890,16 @@
         </select>
       </div>
       
+      <div class="photo-section" id="itemSection">
+        <p class="section-label">缺失項目（每項扣 1 分）</p>
+        <p class="info-text">依評分區域顯示可勾選項目。代號大小寫都可以，例如 1d 與 1D 都是資源、一般垃圾桶。備註寫上「三年級評二年級」時，也會自動套用 1D 扣 1。</p>
+        <div id="itemChecks"></div>
+        <p class="info-text" id="itemForceHint" style="display: none;"></p>
+        <div class="score-summary">
+          <strong>項目扣分：<span id="itemDeduction">0</span> 分</strong>
+        </div>
+      </div>
+
       <div class="photo-section">
         <p class="section-label">拍照扣分</p>
         <p class="info-text">拍照當下就會開始上傳。每張照片扣 1 分，拍完可立刻提交、走到下一班。</p>
@@ -888,7 +924,7 @@
             <button type="button" class="num-stepper-btn" data-target="directDeduction" data-delta="-0.5" aria-label="直接扣分減 0.5">▼</button>
           </div>
         </div>
-        <p class="info-text">可直接輸入扣分數值（不需拍照的情況，每項缺失扣1分）</p>
+        <p class="info-text">上方勾選的項目已各扣 1 分，不必再填這裡。只有清單沒有的缺失，才在這裡另外填扣分。</p>
       </div>
       
       <div class="form-group">
@@ -905,7 +941,7 @@
       
       <div class="form-group">
         <label for="notes">備註</label>
-        <textarea id="notes" name="notes" rows="3" placeholder="可輸入額外說明..."></textarea>
+        <textarea id="notes" name="notes" rows="3" placeholder="可輸入額外說明。代號大小寫都可以，例如 1d。寫上「三年級評二年級」會自動套用 1D 資源、一般垃圾桶扣 1。勾選其它或樓梯時請註明。"></textarea>
       </div>
       
       <div class="score-summary bonus">
@@ -992,7 +1028,7 @@
     </div>
   </div>
 
-  <script src="js/config.js"></script>
+  <script src="js/config.js?v=20261102items2"></script>
   <script src="js/api.js?v=20260924save1"></script>
   <script>
     // 從查詢頁驗證後帶入的 loginType（GitHub 靜態頁）
@@ -1017,6 +1053,8 @@
     let photos = []; // { dataUrl, link, uploading, promise }
     let allClassrooms = []; // 儲存所有教室資料
     let currentClassrooms = []; // 儲存當前載入的教室清單（包含順序資訊）
+    let cleanItemAutoChecked = false; // 備註「三年級評二年級」自動勾選的 1D
+    let cleanItemsAutoFromNotes = {}; // 備註代號（含小寫）自動勾選的項目
     let isStudentLogin = false; // 標記是否為學生登入
     let isTeacherLogin = false; // 標記是否為老師登入
     let isAdminLogin = false; // 標記是否為管理員登入
@@ -1063,6 +1101,141 @@
       timeSlots: ['午休', '下午打掃時間'],
       evaluatorTypes: ['衛生股長', '衛生服務隊', '評分教師', '巡堂老師', '衛生組']
     };
+
+    function notesForceClean1D() {
+      return (document.getElementById('notes').value || '').indexOf('三年級評二年級') >= 0;
+    }
+
+    function getSelectedCleanItems() {
+      const catalog = window.CLEAN_SCORE_ITEMS || [];
+      const byCode = {};
+      document.querySelectorAll('#itemChecks input[type="checkbox"]:checked').forEach(function(input) {
+        const code = input.getAttribute('data-code');
+        const item = catalog.filter(function(row) { return row.code === code; })[0];
+        if (item) byCode[item.code] = item;
+      });
+      const noted = window.cleanScoreItemsInNotes
+        ? window.cleanScoreItemsInNotes(document.getElementById('notes').value)
+        : [];
+      noted.forEach(function(item) {
+        byCode[item.code] = item;
+      });
+      if (notesForceClean1D()) {
+        const item1D = catalog.filter(function(row) { return row.code === '1D'; })[0];
+        if (item1D) byCode[item1D.code] = item1D;
+      }
+      return Object.keys(byCode).map(function(code) { return byCode[code]; });
+    }
+
+    function composeCleanNotes(userNotes, items) {
+      let notes = String(userNotes || '').trim();
+      const extras = [];
+      (items || []).forEach(function(item) {
+        if (!(window.cleanNotesHasItemCode && window.cleanNotesHasItemCode(notes, item.code))) {
+          extras.push(item.code + ' ' + item.name + '扣1');
+        }
+      });
+      if (extras.length) notes = notes ? notes + '，' + extras.join('，') : extras.join('，');
+      if (window.formatCleanScoreNotes) notes = window.formatCleanScoreNotes(notes);
+      return notes;
+    }
+
+    function syncForcedCleanItem() {
+      const force = notesForceClean1D();
+      const box = document.querySelector('#itemChecks input[data-code="1D"]');
+      const hint = document.getElementById('itemForceHint');
+      if (force) {
+        if (box && !box.checked) cleanItemAutoChecked = true;
+        if (!box) cleanItemAutoChecked = true;
+        if (box) {
+          box.checked = true;
+          box.disabled = true;
+        }
+        if (hint) {
+          hint.style.display = 'block';
+          hint.textContent = box
+            ? '備註含「三年級評二年級」，已自動勾選 1D 資源、一般垃圾桶，扣 1 分。'
+            : '備註含「三年級評二年級」，已另計 1D 資源、一般垃圾桶，扣 1 分（此項屬教室區）。';
+        }
+      } else {
+        if (box) box.disabled = false;
+        if (cleanItemAutoChecked && box) box.checked = false;
+        cleanItemAutoChecked = false;
+        if (hint) {
+          hint.style.display = 'none';
+          hint.textContent = '';
+        }
+      }
+      syncNoteItemCodes();
+    }
+
+    function syncNoteItemCodes() {
+      const notesEl = document.getElementById('notes');
+      const noted = {};
+      (window.cleanScoreItemsInNotes ? window.cleanScoreItemsInNotes(notesEl ? notesEl.value : '') : []).forEach(function(item) {
+        noted[item.code] = item;
+      });
+      document.querySelectorAll('#itemChecks input[type="checkbox"]').forEach(function(input) {
+        const code = input.getAttribute('data-code');
+        if (code === '1D' && notesForceClean1D()) return;
+        if (noted[code]) {
+          if (!input.checked) cleanItemsAutoFromNotes[code] = true;
+          input.checked = true;
+        } else if (cleanItemsAutoFromNotes[code]) {
+          input.checked = false;
+          delete cleanItemsAutoFromNotes[code];
+        }
+      });
+      const hint = document.getElementById('itemForceHint');
+      if (!hint || notesForceClean1D()) return;
+      const hidden = Object.keys(noted).filter(function(code) {
+        return !document.querySelector('#itemChecks input[data-code="' + code + '"]');
+      });
+      if (!hidden.length) return;
+      hint.style.display = 'block';
+      hint.textContent = '備註代號不分大小寫，已另計 ' + hidden.map(function(code) {
+        return code + ' ' + noted[code].name;
+      }).join('、') + '，各扣 1 分。';
+    }
+
+    function renderCleanItems() {
+      const area = (document.getElementById('area').value || '').trim();
+      const box = document.getElementById('itemChecks');
+      if (!box) return;
+      const prev = {};
+      box.querySelectorAll('input[type="checkbox"]').forEach(function(input) {
+        prev[input.getAttribute('data-code')] = input.checked;
+      });
+      box.innerHTML = '';
+      const items = (window.CLEAN_SCORE_ITEMS || []).filter(function(item) {
+        return item.area === area;
+      });
+      if (!area) {
+        box.innerHTML = '<p class="info-text">請先選擇評分區域。</p>';
+      } else if (!items.length) {
+        box.innerHTML = '<p class="info-text">此區域沒有對應項目。</p>';
+      } else {
+        items.forEach(function(item) {
+          const label = document.createElement('label');
+          label.className = 'check-row';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.setAttribute('data-code', item.code);
+          input.checked = !!prev[item.code];
+          input.addEventListener('change', updateTotalScore);
+          const span = document.createElement('span');
+          const codeEl = document.createElement('strong');
+          codeEl.textContent = item.code;
+          span.appendChild(codeEl);
+          span.appendChild(document.createTextNode(item.name + '　扣 1'));
+          label.appendChild(input);
+          label.appendChild(span);
+          box.appendChild(label);
+        });
+      }
+      syncForcedCleanItem();
+      updateTotalScore();
+    }
 
     function fillSelectOptions(select, items, placeholder) {
       if (!select) return;
@@ -1136,6 +1309,7 @@
       } else {
         updateGradeFieldVisibility(savedType || document.getElementById('evaluatorType').value);
       }
+      renderCleanItems();
     }
 
     function syncEvaluatorTypeForLogin() {
@@ -1523,6 +1697,7 @@
         document.getElementById('evaluator').value = savedEvaluator;
         document.getElementById('modalEvaluator').value = savedEvaluator;
       }
+      renderCleanItems();
     }
     
     // 設定事件監聽器
@@ -1537,6 +1712,7 @@
       // 評分區域變更時儲存
       document.getElementById('area').addEventListener('change', function() {
         saveFormData();
+        renderCleanItems();
       });
       
       // 注意：評分時段現在是隱藏欄位，只在 modal 中設定
@@ -1573,6 +1749,11 @@
       
       // 直接扣分變更
       document.getElementById('directDeduction').addEventListener('input', updateTotalScore);
+
+      document.getElementById('notes').addEventListener('input', function() {
+        syncForcedCleanItem();
+        updateTotalScore();
+      });
       
       // 加分變更
       document.getElementById('bonus').addEventListener('input', updateTotalScore);
@@ -1782,6 +1963,7 @@
       localStorage.setItem(STORAGE_KEYS.TIME_SLOT, timeSlot);
       
       updateGradeFieldVisibility(type);
+      renderCleanItems();
       
       // 關閉 modal
       closeSettingsModal();
@@ -2180,7 +2362,10 @@
     function updateTotalScore() {
       const photoDeduction = countedPhotoDeduction();
       const directDeduction = parseFloat(document.getElementById('directDeduction').value) || 0;
-      const rawTotalDeduction = photoDeduction + directDeduction;
+      const itemDeduction = getSelectedCleanItems().length;
+      const itemDeductionEl = document.getElementById('itemDeduction');
+      if (itemDeductionEl) itemDeductionEl.textContent = itemDeduction;
+      const rawTotalDeduction = photoDeduction + directDeduction + itemDeduction;
       const bonus = parseFloat(document.getElementById('bonus').value) || 0;
       
       // 根據評分人員類型給予不同權重
@@ -2229,6 +2414,13 @@
       }
       if (!classroomName) missing.push('教室');
       if (!area) missing.push('評分區域');
+      const selectedItems = getSelectedCleanItems();
+      const noteText = (document.getElementById('notes').value || '').trim();
+      const noteBody = noteText.replace(/三年級評二年級/g, '').replace(/[，,。、；;\s]/g, '');
+      const noteNeeded = selectedItems.filter(function(item) { return item.needsNote; });
+      if (noteNeeded.length && !noteBody) {
+        missing.push('已勾選需註明的項目（' + noteNeeded.map(function(item) { return item.code; }).join('、') + '），請在備註寫明內容');
+      }
       if (photos.some(function(photo) { return photo && photo.uploading; })) {
         missing.push('尚有照片正在上傳，請稍候完成後再送出');
       }
@@ -2262,9 +2454,9 @@
         area: document.getElementById('area').value,
         timeSlot: document.getElementById('timeSlot').value,
         photoCount: countedPhotoDeduction(),
-        directDeduction: parseFloat(document.getElementById('directDeduction').value) || 0,
+        directDeduction: (parseFloat(document.getElementById('directDeduction').value) || 0) + selectedItems.length,
         bonus: parseFloat(document.getElementById('bonus').value) || 0,
-        notes: document.getElementById('notes').value
+        notes: composeCleanNotes(noteText, selectedItems)
       };
       
       submitBtn.disabled = true;
@@ -2542,7 +2734,9 @@
       document.getElementById('directDeduction').value = '0';
       document.getElementById('bonus').value = '0';
       document.getElementById('notes').value = '';
-      updateTotalScore();
+      cleanItemAutoChecked = false;
+      cleanItemsAutoFromNotes = {};
+      renderCleanItems();
       // 保留評分人員年級、評分人員類型、評分人員姓名、評分區域、評分時段（已自動儲存）
       
       submitBtn.disabled = false;
