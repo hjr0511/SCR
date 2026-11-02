@@ -1096,7 +1096,12 @@
           <p class="hint-text">不選擇則顯示所有年級的統計</p>
         </div>
         
-        <button type="button" class="search-btn" id="semesterStatsBtn">查詢學期總成績</button>
+        <div class="btn-row">
+          <button type="button" class="search-btn" id="semesterStatsBtn">查詢學期總成績</button>
+          <button type="button" class="search-btn secondary" id="semesterExportBtn">匯出每學期排名(CSV)</button>
+          <button type="button" class="search-btn" id="semesterExportPdfBtn" style="background-color: #7e57c2;">匯出每學期 PDF</button>
+        </div>
+        <p class="hint-text" style="margin-top:8px;">學期授獎：特優 3 名、優等 3 名（可並列）；普通科／服務科不占一般科 1～6 名額，達標並列並註 4。</p>
       </div>
     </div>
     
@@ -1111,7 +1116,21 @@
         <h3>學期總成績統計</h3>
         <div id="semesterModalContent"></div>
         <div class="export-modal-buttons">
+          <button type="button" class="search-btn secondary" id="semesterModalCsvBtn">匯出每學期排名(CSV)</button>
+          <button type="button" class="search-btn" id="semesterModalPdfBtn" style="background-color: #7e57c2;">匯出每學期 PDF</button>
           <button type="button" class="search-btn" id="semesterModalCloseBtn" style="background-color: #777;">關閉</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 學期匯出 Modal（PDF 連結） -->
+    <div id="semesterExportModal" class="export-modal-overlay">
+      <div class="export-modal">
+        <h3>學期排名檔案</h3>
+        <p id="semesterExportInfo">已產生學期排名檔案。</p>
+        <div id="semesterPdfLinkWrap" style="margin: 12px 0;"></div>
+        <div class="export-modal-buttons">
+          <button type="button" class="search-btn" style="background-color: #777;" id="semesterExportCloseBtn">關閉</button>
         </div>
       </div>
     </div>
@@ -1339,6 +1358,10 @@
           closeSemesterModal();
         });
       }
+      const semesterExportCloseBtn = document.getElementById('semesterExportCloseBtn');
+      if (semesterExportCloseBtn) {
+        semesterExportCloseBtn.addEventListener('click', closeSemesterExportModal);
+      }
       
       // 班級比較按鈕
       const comparisonBtn = document.getElementById('comparisonBtn');
@@ -1348,11 +1371,35 @@
         });
       }
       
-      // 學期總成績查詢按鈕
+      // 學期總成績查詢／匯出按鈕（比照秩序，無需管理員解鎖）
       const semesterStatsBtn = document.getElementById('semesterStatsBtn');
       if (semesterStatsBtn) {
         semesterStatsBtn.addEventListener('click', function() {
           loadSemesterStatistics();
+        });
+      }
+      const semesterExportBtn = document.getElementById('semesterExportBtn');
+      if (semesterExportBtn) {
+        semesterExportBtn.addEventListener('click', function() {
+          exportSemesterStatisticsToCsv();
+        });
+      }
+      const semesterExportPdfBtn = document.getElementById('semesterExportPdfBtn');
+      if (semesterExportPdfBtn) {
+        semesterExportPdfBtn.addEventListener('click', function() {
+          exportSemesterStatisticsToPdf();
+        });
+      }
+      const semesterModalCsvBtn = document.getElementById('semesterModalCsvBtn');
+      if (semesterModalCsvBtn) {
+        semesterModalCsvBtn.addEventListener('click', function() {
+          exportSemesterStatisticsToCsv();
+        });
+      }
+      const semesterModalPdfBtn = document.getElementById('semesterModalPdfBtn');
+      if (semesterModalPdfBtn) {
+        semesterModalPdfBtn.addEventListener('click', function() {
+          exportSemesterStatisticsToPdf();
         });
       }
       
@@ -2665,6 +2712,127 @@
       semesterEndDate.value = formatDate(endDate);
     }
     
+    function getSemesterDateRangeOrWarn() {
+      const semesterStartDate = document.getElementById('semesterStartDate');
+      const semesterEndDate = document.getElementById('semesterEndDate');
+      const startDate = semesterStartDate ? semesterStartDate.value : '';
+      const endDate = semesterEndDate ? semesterEndDate.value : '';
+      if (!startDate || !endDate) {
+        showMessage('請選擇開始日期和結束日期', 'error');
+        return null;
+      }
+      if (startDate > endDate) {
+        showMessage('開始日期不能晚於結束日期', 'error');
+        return null;
+      }
+      return { startDate: startDate, endDate: endDate };
+    }
+
+    function closeSemesterExportModal() {
+      const overlay = document.getElementById('semesterExportModal');
+      if (overlay) overlay.style.display = 'none';
+    }
+
+    function showSemesterPdfReady(result) {
+      const viewUrl = (result && result.docUrl) || '';
+      const downloadUrl = weeklyPdfDownloadUrlFromResult(result);
+      const modal = document.getElementById('semesterExportModal');
+      const info = document.getElementById('semesterExportInfo');
+      const linkWrap = document.getElementById('semesterPdfLinkWrap');
+      if (info) {
+        info.textContent = '已產生學期績優班級 PDF' +
+          (result && result.startDate && result.endDate
+            ? '（' + result.startDate + ' ~ ' + result.endDate + '）'
+            : '') + '。';
+      }
+      if (linkWrap) {
+        const href = downloadUrl || viewUrl;
+        linkWrap.innerHTML = href
+          ? '<a class="weekly-pdf-download-link" href="' + href + '" target="_blank" rel="noopener">點此下載／開啟 PDF</a>'
+          : '<span style="color:#c62828;">找不到下載連結</span>';
+      }
+      if (modal) modal.style.display = 'flex';
+    }
+
+    function exportSemesterStatisticsToCsv() {
+      try {
+        const range = getSemesterDateRangeOrWarn();
+        if (!range) return;
+        const btn = document.getElementById('semesterExportBtn');
+        const modalBtn = document.getElementById('semesterModalCsvBtn');
+        if (btn) btn.disabled = true;
+        if (modalBtn) modalBtn.disabled = true;
+        showMessage('匯出學期 CSV 中...', 'info');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (btn) btn.disabled = false;
+            if (modalBtn) modalBtn.disabled = false;
+            if (!result || !result.success) {
+              showMessage((result && result.message) || '匯出學期 CSV 失敗', 'error');
+              return;
+            }
+            if (!result.csvContent) {
+              showMessage('無法取得 CSV 內容', 'error');
+              return;
+            }
+            try {
+              const filename = result.filename || 'semester_stats.csv';
+              const blob = new Blob([result.csvContent], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              showMessage('學期 CSV 下載完成', 'success');
+            } catch (err) {
+              showMessage('下載 CSV 時發生錯誤：' + (err.message || err.toString()), 'error');
+            }
+          })
+          .withFailureHandler(function(error) {
+            if (btn) btn.disabled = false;
+            if (modalBtn) modalBtn.disabled = false;
+            showMessage('匯出學期 CSV 失敗：' + (error.message || error.toString()), 'error');
+          })
+          .exportSemesterStatisticsCsv(range.startDate, range.endDate);
+      } catch (err) {
+        showMessage('匯出學期 CSV 時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+
+    function exportSemesterStatisticsToPdf() {
+      try {
+        const range = getSemesterDateRangeOrWarn();
+        if (!range) return;
+        const btn = document.getElementById('semesterExportPdfBtn');
+        const modalBtn = document.getElementById('semesterModalPdfBtn');
+        if (btn) btn.disabled = true;
+        if (modalBtn) modalBtn.disabled = true;
+        showMessage('匯出學期 PDF 中...', 'info');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (btn) btn.disabled = false;
+            if (modalBtn) modalBtn.disabled = false;
+            if (!result || !result.success) {
+              showMessage((result && result.message) || '匯出學期 PDF 失敗', 'error');
+              return;
+            }
+            showSemesterPdfReady(result);
+            showMessage('已產生學期 PDF，請點視窗中的連結下載。', 'success');
+          })
+          .withFailureHandler(function(error) {
+            if (btn) btn.disabled = false;
+            if (modalBtn) modalBtn.disabled = false;
+            showMessage('匯出學期 PDF 失敗：' + (error.message || error.toString()), 'error');
+          })
+          .exportSemesterStatisticsPdf(range.startDate, range.endDate);
+      } catch (err) {
+        showMessage('匯出學期 PDF 時發生錯誤：' + (err.message || err.toString()), 'error');
+      }
+    }
+
     // 載入學期總成績統計
     function loadSemesterStatistics() {
       try {

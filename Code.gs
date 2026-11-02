@@ -1897,8 +1897,55 @@ function formatHonorClassName_(name) {
 }
 
 function formatHonorSubtitleRaw_(meta) {
+  // 學期總成績 PDF：只顯示學年度／學期／日期，不要「第 null 週」
+  if (meta && (meta.isSemester || meta.weekNum == null || meta.weekNum === '')) {
+    return String(meta.schoolYear) + '學年度第' + meta.semester + '學期(' + meta.dateRange + ')';
+  }
   return String(meta.schoolYear) + '學年度第' + meta.semester + '學期第' +
     meta.weekNum + '週(' + meta.dateRange + ')';
+}
+
+/** 學期績優班級 PDF 設定（特優 3、優等 3，普通／服務註4） */
+function getSemesterHonorPdfConfig_() {
+  return {
+    contestShort: '整潔',
+    specialKeywords: ['普通', '服務'],
+    useNote4: true,
+    notes: [
+      '一、 學期評比取前 6 名（特優 3 名、優等 3 名），若因名次重複而超過 6 個班級，則增額授獎。',
+      '二、 由學務處統一公佈績優班級及名次。',
+      '三、 利用集會時機統一頒發獎狀，如無集會時機，則由學務主任召集受獎班級衛生股長頒發或放班級櫃。',
+      '四、 服務科及普通科之評分，不與一般科班評比排序，惟仍依得分並列名次'
+    ]
+  };
+}
+
+function getHonorSemesterMeta_(startDate, endDate) {
+  const tz = Session.getScriptTimeZone();
+  const start = new Date(startDate + ' 00:00:00');
+  const end = new Date(endDate + ' 00:00:00');
+  const month = start.getMonth() + 1;
+  const year = start.getFullYear();
+  const schoolYear = month >= 8 ? year - 1911 : year - 1912;
+  const semester = (month >= 8 || month <= 1) ? 1 : 2;
+  const dateRange = Utilities.formatDate(start, tz, 'M/d') + '-' +
+    Utilities.formatDate(end, tz, 'M/d');
+  return {
+    schoolYear: schoolYear,
+    semester: semester,
+    weekNum: null,
+    isSemester: true,
+    dateRange: dateRange,
+    startDate: Utilities.formatDate(start, tz, 'yyyy-MM-dd'),
+    endDate: Utilities.formatDate(end, tz, 'yyyy-MM-dd')
+  };
+}
+
+function trashDriveFilesByName_(name) {
+  const files = DriveApp.getFilesByName(name);
+  while (files.hasNext()) {
+    files.next().setTrashed(true);
+  }
 }
 
 function formatHonorSubtitle_(meta) {
@@ -3197,6 +3244,177 @@ function getSemesterStatistics(startDate, endDate, grade) {
 }
 
 /**
+ * 匯出學期績優班級 PDF（特優／優等＋普通／服務註4，版面與每週績優相同）
+ */
+function exportSemesterStatisticsPdf(startDate, endDate) {
+  try {
+    if (!startDate || !endDate) {
+      return { success: false, message: '請指定開始日期和結束日期' };
+    }
+    const semester = getSemesterStatistics(startDate, endDate, '');
+    if (!semester || semester.success === false) {
+      return {
+        success: false,
+        message: '無法取得學期統計資料：' + (semester && semester.error ? semester.error : '未知錯誤')
+      };
+    }
+
+    const config = getSemesterHonorPdfConfig_();
+    const grades = ['一年級', '二年級', '三年級'];
+    const rankedData = {};
+    grades.forEach(function(grade) {
+      const gradeStats = (semester.statistics && semester.statistics[grade]) || null;
+      rankedData[grade] = {
+        allClassrooms: gradeStats && gradeStats.allClassrooms ? gradeStats.allClassrooms.slice() : []
+      };
+    });
+    const awardLists = buildHonorAwardLists_(rankedData, grades, config);
+    const meta = getHonorSemesterMeta_(semester.startDate, semester.endDate);
+
+    const pdfName = meta.schoolYear + '-' + meta.semester + '_學期' + config.contestShort + '績優班級.pdf';
+    trashDriveFilesByName_(pdfName);
+
+    let pdfFile;
+    try {
+      pdfFile = exportHonorHtmlToPdfFile_(buildHonorFormHtml_(meta, awardLists, grades, config), pdfName);
+    } catch (htmlErr) {
+      Logger.log('學期 HTML 楷體 PDF 失敗，改用試算表匯出：' + htmlErr.toString());
+      const ss = SpreadsheetApp.create('_tmp_semester_honor_' + new Date().getTime());
+      const sheet = ss.getSheets()[0];
+      sheet.setName('學期績優班級');
+      fillHonorFormSheet_(sheet, meta, awardLists, grades, config);
+      SpreadsheetApp.flush();
+      pdfFile = exportSheetToPdfFile_(ss, sheet, pdfName);
+      try {
+        DriveApp.getFileById(ss.getId()).setTrashed(true);
+      } catch (trashErr) {
+        Logger.log('暫存試算表刪除失敗：' + trashErr.toString());
+      }
+    }
+    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    const fileId = pdfFile.getId();
+    return {
+      success: true,
+      message: '已產生學期績優班級 PDF',
+      docUrl: pdfFile.getUrl(),
+      downloadUrl: 'https://drive.google.com/uc?export=download&id=' + fileId,
+      fileId: fileId,
+      startDate: semester.startDate,
+      endDate: semester.endDate
+    };
+  } catch (error) {
+    Logger.log('exportSemesterStatisticsPdf 發生錯誤：' + error.toString());
+    return {
+      success: false,
+      message: '匯出學期 PDF 時發生錯誤：' + error.toString()
+    };
+  }
+}
+
+/**
+ * 匯出學期總成績 CSV（績優名單 + 各年級完整排名）
+ */
+function exportSemesterStatisticsCsv(startDate, endDate) {
+  try {
+    if (!startDate || !endDate) {
+      return { success: false, message: '請指定開始日期和結束日期' };
+    }
+    const semester = getSemesterStatistics(startDate, endDate, '');
+    if (!semester || semester.success === false) {
+      return {
+        success: false,
+        message: '無法取得學期統計資料：' + (semester && semester.error ? semester.error : '未知錯誤')
+      };
+    }
+
+    const config = getSemesterHonorPdfConfig_();
+    const grades = ['一年級', '二年級', '三年級'];
+    const meta = getHonorSemesterMeta_(semester.startDate, semester.endDate);
+    const lines = [];
+    const csvEsc = function(val) {
+      const text = String(val == null ? '' : val);
+      if (/[",\r\n]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
+      return text;
+    };
+
+    lines.push('中正高工生活榮譽競賽整潔評比績優班級（學期）');
+    lines.push(meta.schoolYear + '學年度第' + meta.semester + '學期(' + meta.dateRange + ')');
+    lines.push('');
+    lines.push('高一,,高二,,高三');
+    lines.push('名次,班級,名次,班級,名次,班級');
+
+    const rankedData = {};
+    grades.forEach(function(grade) {
+      const gradeStats = (semester.statistics && semester.statistics[grade]) || null;
+      rankedData[grade] = {
+        allClassrooms: gradeStats && gradeStats.allClassrooms ? gradeStats.allClassrooms.slice() : []
+      };
+    });
+    const awardLists = buildHonorAwardLists_(rankedData, grades, config);
+    let maxRows = 0;
+    grades.forEach(function(grade) {
+      maxRows = Math.max(maxRows, (awardLists[grade] || []).length);
+    });
+    for (let i = 0; i < maxRows; i++) {
+      const row = [];
+      grades.forEach(function(grade) {
+        const rows = awardLists[grade] || [];
+        if (i < rows.length) {
+          row.push(csvEsc(rows[i].label), csvEsc(rows[i].name));
+        } else {
+          row.push('', '');
+        }
+      });
+      lines.push(row.join(','));
+    }
+
+    // CSV 不輸出附記（附記僅顯示於 PDF）
+    lines.push('');
+    lines.push('各年級完整排名');
+    lines.push(['年級', '名次', '班級', '學期成績', '記錄數', '授獎'].join(','));
+
+    grades.forEach(function(grade) {
+      const gradeStats = (semester.statistics && semester.statistics[grade]) || null;
+      if (!gradeStats || !gradeStats.allClassrooms) return;
+      const awardMap = {};
+      (awardLists[grade] || []).forEach(function(item) {
+        awardMap[item.name || ''] = item.label || '';
+      });
+      gradeStats.allClassrooms.forEach(function(cls) {
+        lines.push([
+          csvEsc(grade),
+          cls.rank,
+          csvEsc(cls.classroomName || ''),
+          formatExactScore_(cls.totalScore),
+          cls.recordCount || 0,
+          csvEsc(awardMap[cls.classroomName] || '')
+        ].join(','));
+      });
+    });
+
+    const csvContent = '\uFEFF' + lines.join('\r\n');
+    const filename = '學期排名_' + String(semester.startDate || '').replace(/-/g, '') +
+      '_' + String(semester.endDate || '').replace(/-/g, '') + '.csv';
+
+    return {
+      success: true,
+      message: '已產生學期總成績 CSV',
+      filename: filename,
+      csvContent: csvContent,
+      startDate: semester.startDate,
+      endDate: semester.endDate
+    };
+  } catch (error) {
+    Logger.log('exportSemesterStatisticsCsv 發生錯誤：' + error.toString());
+    return {
+      success: false,
+      message: '匯出學期 CSV 時發生錯誤：' + error.toString()
+    };
+  }
+}
+
+/**
  * 取得所有教室清單（用於查看頁面的下拉選單）
  * @return {Array} 教室清單陣列
  */
@@ -3473,6 +3691,10 @@ function dispatchAction_(action, args, authPassword) {
       return exportWeeklyStatisticsToSheet(args[0]);
     case 'getSemesterStatistics':
       return getSemesterStatistics(args[0], args[1], args[2]);
+    case 'exportSemesterStatisticsCsv':
+      return exportSemesterStatisticsCsv(args[0], args[1]);
+    case 'exportSemesterStatisticsPdf':
+      return exportSemesterStatisticsPdf(args[0], args[1]);
     case 'getViewScoresUrl':
       return '';
     case 'getScoreSystemUrl':
