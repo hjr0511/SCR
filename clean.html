@@ -874,11 +874,11 @@
           <div class="value" id="totalRecords">0</div>
         </div>
         <div class="summary-item negative">
-          <div class="label">總扣分</div>
+          <div class="label">總扣分（計分）</div>
           <div class="value" id="totalDeduction">0</div>
         </div>
         <div class="summary-item positive">
-          <div class="label">總加分</div>
+          <div class="label">總加分（計分）</div>
           <div class="value" id="totalBonus">0</div>
         </div>
         <div class="summary-item" id="totalScoreItem">
@@ -1779,7 +1779,19 @@
       }
     }
     
-    // 計算統計摘要
+    // 與評分頁／後端相同權重：衛生股長／服務隊／衛生組 0.25；教師／巡堂 0.5
+    function cleanScoreWeight(evaluatorType) {
+      const t = String(evaluatorType || '');
+      if (t.indexOf('衛生股長') >= 0 || t.indexOf('衛生服務隊') >= 0 || t.indexOf('衛生組') >= 0) {
+        return 0.25;
+      }
+      if (t.indexOf('評分教師') >= 0 || t.indexOf('教師') >= 0 || t.indexOf('老師') >= 0 || t.indexOf('巡堂') >= 0) {
+        return 0.5;
+      }
+      return 1;
+    }
+
+    // 計算統計摘要（扣分／加分用計分加權值，與總分同一套算法，不四捨五入）
     function calculateSummary(records) {
       try {
         if (!records || !Array.isArray(records)) {
@@ -1794,10 +1806,13 @@
         
         records.forEach(function(record) {
           if (!record) return;
+          const weight = cleanScoreWeight(record.evaluatorType);
           const photoDeduction = parseFloat(record.photoDeduction) || 0;
           const directDeduction = parseFloat(record.directDeduction) || 0;
-          totalDeduction += photoDeduction + directDeduction;
-          totalBonus += parseFloat(record.bonus) || 0;
+          const bonus = parseFloat(record.bonus) || 0;
+          // 計分扣分／加分 = 原始項目數 × 權重（例如 1×0.25=0.25）
+          totalDeduction += (photoDeduction + directDeduction) * weight;
+          totalBonus += bonus * weight;
           totalScore += parseFloat(record.totalScore) || 0;
         });
         
