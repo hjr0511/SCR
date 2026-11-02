@@ -553,6 +553,29 @@
     .check-row strong {
       margin-right: 6px;
     }
+
+    .check-row-points {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 8px;
+      white-space: nowrap;
+    }
+
+    .check-row-points input {
+      width: 52px;
+      height: 28px;
+      margin: 0;
+      padding: 2px 6px;
+      font-size: 15px;
+      text-align: center;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    .check-row-points[hidden] {
+      display: none !important;
+    }
     
     .grade-info {
       background-color: #e7f3ff;
@@ -891,8 +914,8 @@
       </div>
       
       <div class="photo-section" id="itemSection">
-        <p class="section-label">缺失項目（每項扣 1 分）</p>
-        <p class="info-text">依評分區域顯示可勾選項目。勾選後會寫進備註，取消勾選就從備註拿掉。代號大小寫都可以，例如 1d 與 1D 都是資源、一般垃圾桶。備註寫上「三年級評二年級」時，也會自動套用 1D 扣 1。</p>
+        <p class="section-label">缺失項目（預設每項扣 1 分；1D 可自行填整數）</p>
+        <p class="info-text">依評分區域顯示可勾選項目。勾選後會寫進備註，取消勾選就從備註拿掉。代號大小寫都可以，例如 1d 與 1D 都是資源、一般垃圾桶。勾選 1D 後可自行填扣幾分（整數，至少 1）。備註寫上「三年級評二年級」時，也會自動套用 1D（預設扣 1，可改）。</p>
         <div id="itemChecks"></div>
         <p class="info-text" id="itemForceHint" style="display: none;"></p>
         <div class="score-summary">
@@ -924,7 +947,7 @@
             <button type="button" class="num-stepper-btn" data-target="directDeduction" data-delta="-0.5" aria-label="直接扣分減 0.5">▼</button>
           </div>
         </div>
-        <p class="info-text">上方勾選的項目已各扣 1 分，不必再填這裡。只有清單沒有的缺失，才在這裡另外填扣分。</p>
+        <p class="info-text">上方勾選的項目已計入扣分（1D 以你填的整數為準，其餘各扣 1），不必再填這裡。只有清單沒有的缺失，才在這裡另外填扣分。</p>
       </div>
       
       <div class="form-group">
@@ -941,7 +964,7 @@
       
       <div class="form-group">
         <label for="notes">備註</label>
-        <textarea id="notes" name="notes" rows="3" placeholder="勾選的項目會顯示在這裡。可再補充說明。代號大小寫都可以，例如 1d。寫上「三年級評二年級」會自動套用 1D。勾選其它或樓梯時請註明。"></textarea>
+        <textarea id="notes" name="notes" rows="3" placeholder="勾選的項目會顯示在這裡。可再補充說明。代號大小寫都可以，例如 1d。寫上「三年級評二年級」會自動套用 1D。1D 可自行填扣幾分。勾選其它或樓梯時請註明。"></textarea>
       </div>
       
       <div class="score-summary bonus">
@@ -1055,6 +1078,7 @@
     let currentClassrooms = []; // 儲存當前載入的教室清單（包含順序資訊）
     let cleanItemAutoChecked = false; // 備註「三年級評二年級」自動勾選的 1D
     let cleanItemsAutoFromNotes = {}; // 備註代號（含小寫）自動勾選的項目
+    let clean1DPointsMemory = 1; // 1D 自訂扣分（整數，至少 1）
     let isStudentLogin = false; // 標記是否為學生登入
     let isTeacherLogin = false; // 標記是否為老師登入
     let isAdminLogin = false; // 標記是否為管理員登入
@@ -1104,6 +1128,60 @@
 
     function notesForceClean1D() {
       return (document.getElementById('notes').value || '').indexOf('三年級評二年級') >= 0;
+    }
+
+    function normalizeClean1DPoints(value) {
+      let n = parseInt(value, 10);
+      if (!n || n < 1) n = 1;
+      return n;
+    }
+
+    function getClean1DPoints() {
+      const el = document.getElementById('item1DPoints');
+      if (el) {
+        clean1DPointsMemory = normalizeClean1DPoints(el.value);
+        el.value = String(clean1DPointsMemory);
+      }
+      return normalizeClean1DPoints(clean1DPointsMemory);
+    }
+
+    function setClean1DPoints(value) {
+      clean1DPointsMemory = normalizeClean1DPoints(value);
+      const el = document.getElementById('item1DPoints');
+      if (el) el.value = String(clean1DPointsMemory);
+    }
+
+    function parseClean1DPointsFromNotes(text) {
+      const source = String(text || '');
+      for (let i = 0; i < source.length; i++) {
+        if (!notesMentionAt(source, i, '1D')) continue;
+        let rest = source.slice(i + 2);
+        rest = rest.replace(/^\s+/, '');
+        const item1D = (window.CLEAN_SCORE_ITEMS || []).filter(function(row) { return row.code === '1D'; })[0];
+        if (item1D && rest.indexOf(item1D.name) === 0) {
+          rest = rest.slice(item1D.name.length);
+        }
+        const m = rest.match(/^\s*扣\s*(\d+)/);
+        if (m) return normalizeClean1DPoints(m[1]);
+        return null;
+      }
+      return null;
+    }
+
+    function cleanItemPointsLabel(item) {
+      if (item && item.code === '1D') return '扣' + getClean1DPoints();
+      return '扣1';
+    }
+
+    function getCleanItemPoints(item) {
+      if (item && item.code === '1D') return getClean1DPoints();
+      return 1;
+    }
+
+    function sumSelectedCleanItemPoints(items) {
+      return (items || []).reduce(function(sum, item) {
+        return sum + getCleanItemPoints(item);
+      }, 0);
     }
 
     function getSelectedCleanItems() {
@@ -1158,7 +1236,7 @@
         i += matched.code.length;
         while (i < raw.length && /\s/.test(raw.charAt(i))) i++;
         if (raw.slice(i).indexOf(matched.name) === 0) i += matched.name.length;
-        const deduct = raw.slice(i).match(/^\s*扣\s*1/);
+        const deduct = raw.slice(i).match(/^\s*扣\s*\d+/);
         if (deduct) i += deduct[0].length;
         i--;
       }
@@ -1196,7 +1274,7 @@
       if (!notesEl) return;
       const extra = stripCleanItemMentions(notesEl.value);
       const labels = checkedCleanItemsInOrder().map(function(item) {
-        return item.code + ' ' + item.name + '扣1';
+        return item.code + ' ' + item.name + cleanItemPointsLabel(item);
       });
       const parts = [];
       if (extra) parts.push(extra);
@@ -1218,12 +1296,27 @@
       const extras = [];
       (items || []).forEach(function(item) {
         if (!(window.cleanNotesHasItemCode && window.cleanNotesHasItemCode(notes, item.code))) {
-          extras.push(item.code + ' ' + item.name + '扣1');
+          extras.push(item.code + ' ' + item.name + cleanItemPointsLabel(item));
         }
       });
       if (extras.length) notes = notes ? notes + '，' + extras.join('，') : extras.join('，');
       if (window.formatCleanScoreNotes) notes = window.formatCleanScoreNotes(notes);
       return notes;
+    }
+
+    function updateClean1DPointsVisibility() {
+      const wrap = document.getElementById('item1DPointsWrap');
+      const box = document.querySelector('#itemChecks input[data-code="1D"]');
+      const force = notesForceClean1D();
+      const show = !!(box && box.checked) || force;
+      if (wrap) {
+        if (show) wrap.removeAttribute('hidden');
+        else wrap.setAttribute('hidden', '');
+      }
+      const orphan = document.getElementById('item1DOrphanRow');
+      if (orphan) {
+        orphan.style.display = (!box && force) ? 'flex' : 'none';
+      }
     }
 
     function syncForcedCleanItem() {
@@ -1240,8 +1333,8 @@
         if (hint) {
           hint.style.display = 'block';
           hint.textContent = box
-            ? '備註含「三年級評二年級」，已自動勾選 1D 資源、一般垃圾桶，扣 1 分。'
-            : '備註含「三年級評二年級」，已另計 1D 資源、一般垃圾桶，扣 1 分（此項屬教室區）。';
+            ? '備註含「三年級評二年級」，已自動勾選 1D 資源、一般垃圾桶；扣分請在右側填整數。'
+            : '備註含「三年級評二年級」，已另計 1D 資源、一般垃圾桶（此項屬教室區）；扣分請在下方填整數。';
         }
       } else {
         if (box) box.disabled = false;
@@ -1252,15 +1345,19 @@
           hint.textContent = '';
         }
       }
+      updateClean1DPointsVisibility();
       syncNoteItemCodes();
     }
 
     function syncNoteItemCodes() {
       const notesEl = document.getElementById('notes');
+      const noteText = notesEl ? notesEl.value : '';
       const noted = {};
-      (window.cleanScoreItemsInNotes ? window.cleanScoreItemsInNotes(notesEl ? notesEl.value : '') : []).forEach(function(item) {
+      (window.cleanScoreItemsInNotes ? window.cleanScoreItemsInNotes(noteText) : []).forEach(function(item) {
         noted[item.code] = item;
       });
+      const parsed1D = parseClean1DPointsFromNotes(noteText);
+      if (parsed1D != null) setClean1DPoints(parsed1D);
       document.querySelectorAll('#itemChecks input[type="checkbox"]').forEach(function(input) {
         const code = input.getAttribute('data-code');
         if (code === '1D' && notesForceClean1D()) return;
@@ -1272,6 +1369,7 @@
           delete cleanItemsAutoFromNotes[code];
         }
       });
+      updateClean1DPointsVisibility();
       const hint = document.getElementById('itemForceHint');
       if (!hint || notesForceClean1D()) return;
       const hidden = Object.keys(noted).filter(function(code) {
@@ -1280,8 +1378,40 @@
       if (!hidden.length) return;
       hint.style.display = 'block';
       hint.textContent = '備註代號不分大小寫，已另計 ' + hidden.map(function(code) {
-        return code + ' ' + noted[code].name;
-      }).join('、') + '，各扣 1 分。';
+        const pts = code === '1D' ? getClean1DPoints() : 1;
+        return code + ' ' + noted[code].name + '扣' + pts;
+      }).join('、') + '。';
+    }
+
+    function buildClean1DPointsWrap() {
+      const wrap = document.createElement('span');
+      wrap.className = 'check-row-points';
+      wrap.id = 'item1DPointsWrap';
+      wrap.setAttribute('hidden', '');
+      wrap.appendChild(document.createTextNode('扣'));
+      const points = document.createElement('input');
+      points.type = 'number';
+      points.id = 'item1DPoints';
+      points.min = '1';
+      points.step = '1';
+      points.inputMode = 'numeric';
+      points.value = String(normalizeClean1DPoints(clean1DPointsMemory));
+      points.setAttribute('aria-label', '1D 扣幾分');
+      points.addEventListener('click', function(e) { e.stopPropagation(); });
+      points.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+      points.addEventListener('input', function() {
+        setClean1DPoints(points.value);
+        syncNotesFromChecks();
+        updateTotalScore();
+      });
+      points.addEventListener('change', function() {
+        setClean1DPoints(points.value);
+        syncNotesFromChecks();
+        updateTotalScore();
+      });
+      wrap.appendChild(points);
+      wrap.appendChild(document.createTextNode('分'));
+      return wrap;
     }
 
     function renderCleanItems() {
@@ -1289,6 +1419,8 @@
       const box = document.getElementById('itemChecks');
       if (!box) return;
       const prev = {};
+      const prevPointsEl = document.getElementById('item1DPoints');
+      if (prevPointsEl) clean1DPointsMemory = normalizeClean1DPoints(prevPointsEl.value);
       box.querySelectorAll('input[type="checkbox"]').forEach(function(input) {
         prev[input.getAttribute('data-code')] = input.checked;
       });
@@ -1310,6 +1442,7 @@
           input.checked = !!prev[item.code];
           input.addEventListener('change', function() {
             delete cleanItemsAutoFromNotes[item.code];
+            if (item.code === '1D') updateClean1DPointsVisibility();
             syncNotesFromChecks();
             updateTotalScore();
           });
@@ -1317,12 +1450,34 @@
           const codeEl = document.createElement('strong');
           codeEl.textContent = item.code;
           span.appendChild(codeEl);
-          span.appendChild(document.createTextNode(item.name + '　扣 1'));
+          if (item.code === '1D') {
+            span.appendChild(document.createTextNode(item.name + '　'));
+            span.appendChild(buildClean1DPointsWrap());
+          } else {
+            span.appendChild(document.createTextNode(item.name + '　扣 1'));
+          }
           label.appendChild(input);
           label.appendChild(span);
           box.appendChild(label);
         });
       }
+
+      // 非教室區但因「三年級評二年級」另計 1D 時，仍提供扣分輸入
+      if (!document.getElementById('item1DPointsWrap')) {
+        const orphan = document.createElement('div');
+        orphan.className = 'check-row';
+        orphan.id = 'item1DOrphanRow';
+        orphan.style.display = 'none';
+        const orphanSpan = document.createElement('span');
+        const orphanCode = document.createElement('strong');
+        orphanCode.textContent = '1D';
+        orphanSpan.appendChild(orphanCode);
+        orphanSpan.appendChild(document.createTextNode('資源、一般垃圾桶　'));
+        orphanSpan.appendChild(buildClean1DPointsWrap());
+        orphan.appendChild(orphanSpan);
+        box.appendChild(orphan);
+      }
+
       syncForcedCleanItem();
       syncNotesFromChecks();
       updateTotalScore();
@@ -2455,7 +2610,7 @@
     function updateTotalScore() {
       const photoDeduction = countedPhotoDeduction();
       const directDeduction = parseFloat(document.getElementById('directDeduction').value) || 0;
-      const itemDeduction = getSelectedCleanItems().length;
+      const itemDeduction = sumSelectedCleanItemPoints(getSelectedCleanItems());
       const itemDeductionEl = document.getElementById('itemDeduction');
       if (itemDeductionEl) itemDeductionEl.textContent = itemDeduction;
       const rawTotalDeduction = photoDeduction + directDeduction + itemDeduction;
@@ -2507,6 +2662,7 @@
       }
       if (!classroomName) missing.push('教室');
       if (!area) missing.push('評分區域');
+      syncNotesFromChecks();
       const selectedItems = getSelectedCleanItems();
       const noteText = (document.getElementById('notes').value || '').trim();
       const noteBody = stripCleanItemMentions(noteText).replace(/三年級評二年級/g, '').replace(/[，,。、；;\s]/g, '');
@@ -2547,7 +2703,7 @@
         area: document.getElementById('area').value,
         timeSlot: document.getElementById('timeSlot').value,
         photoCount: countedPhotoDeduction(),
-        directDeduction: (parseFloat(document.getElementById('directDeduction').value) || 0) + selectedItems.length,
+        directDeduction: (parseFloat(document.getElementById('directDeduction').value) || 0) + sumSelectedCleanItemPoints(selectedItems),
         bonus: parseFloat(document.getElementById('bonus').value) || 0,
         notes: composeCleanNotes(noteText, selectedItems)
       };
@@ -2829,6 +2985,7 @@
       document.getElementById('notes').value = '';
       cleanItemAutoChecked = false;
       cleanItemsAutoFromNotes = {};
+      clean1DPointsMemory = 1;
       renderCleanItems();
       // 保留評分人員年級、評分人員類型、評分人員姓名、評分區域、評分時段（已自動儲存）
       

@@ -19,13 +19,13 @@ window.APP_CONFIG = {
   CONFIG_FILE: 'js/config.js'
 };
 
-/** 整潔缺失項目。每項扣 1 分。1D 為資源、一般垃圾桶。 */
+/** 整潔缺失項目。預設每項扣 1 分。1D 為資源、一般垃圾桶，可自行填整數扣分。 */
 window.CLEAN_SCORE_ITEMS = [
   { code: '1A1', area: '教室區', name: '講桌、講台' },
   { code: '1A2', area: '教室區', name: '黑板' },
   { code: '1B', area: '教室區', name: '桌椅' },
   { code: '1C', area: '教室區', name: '教室地板' },
-  { code: '1D', area: '教室區', name: '資源、一般垃圾桶' },
+  { code: '1D', area: '教室區', name: '資源、一般垃圾桶', customPoints: true },
   { code: '1E', area: '教室區', name: '走廊地板（含水溝）' },
   { code: '1F', area: '教室區', name: '清掃用具' },
   { code: '1G1', area: '教室區', name: '窗戶' },
@@ -99,7 +99,7 @@ window.cleanScoreItemsInNotes = function(text) {
 
 window.cleanNotesHasItemCode = cleanNotesHasItemCode_;
 
-/** 備註裡的項目代號改成「代號 名稱」。寫了「三年級評二年級」且未寫 1D 時，補上 1D 資源、一般垃圾桶扣1。 */
+/** 備註裡的項目代號改成「代號 名稱」。寫了「三年級評二年級」且未寫 1D 時，補上 1D 資源、一般垃圾桶扣1（前端可再改成其他整數）。 */
 window.formatCleanScoreNotes = function(notes) {
   const raw = notes == null ? '' : String(notes);
   if (!raw) return '';
