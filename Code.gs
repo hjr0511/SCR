@@ -711,6 +711,49 @@ function isCleanTeacherEvaluator_(type) {
   return true;
 }
 
+/** 是否為衛生組（唯一可加分） */
+function isCleanHealthGroupEvaluator_(type) {
+  return String(type || '').indexOf('衛生組') >= 0;
+}
+
+/**
+ * 依評分人員類型取得計分權重（與評分頁／saveScore 一致）
+ * 衛生股長／服務隊／衛生組 0.25；教師／巡堂 0.5
+ */
+function cleanScoreWeightFromEvaluatorType_(evaluatorType) {
+  const t = String(evaluatorType || '');
+  if (t.indexOf('衛生股長') >= 0 || t.indexOf('衛生服務隊') >= 0 || t.indexOf('衛生組') >= 0) {
+    return 0.25;
+  }
+  if (t.indexOf('評分教師') >= 0 || t.indexOf('教師') >= 0 || t.indexOf('老師') >= 0 || t.indexOf('巡堂') >= 0) {
+    return 0.5;
+  }
+  return 1;
+}
+
+/**
+ * 計算整潔單筆計分：加分上限 3、僅衛生組可加分，再乘權重。
+ * @return {{ photoDeduction:number, directDeduction:number, bonus:number, totalScore:number, weight:number }}
+ */
+function computeCleanWeightedScore_(photoDeduction, directDeduction, bonus, evaluatorType) {
+  const weight = cleanScoreWeightFromEvaluatorType_(evaluatorType);
+  let photo = Number(photoDeduction) || 0;
+  let direct = Number(directDeduction) || 0;
+  let b = Number(bonus) || 0;
+  if (photo < 0) photo = 0;
+  if (direct < 0) direct = 0;
+  if (b < 0) b = 0;
+  if (b > 3) b = 3;
+  if (!isCleanHealthGroupEvaluator_(evaluatorType)) b = 0;
+  return {
+    photoDeduction: photo,
+    directDeduction: direct,
+    bonus: b,
+    weight: weight,
+    totalScore: b * weight - (photo + direct) * weight
+  };
+}
+
 function findOwnCleanScoreRow_(sheet, col, scoreData) {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return 0;
@@ -1179,20 +1222,22 @@ function updateScoreRecord(rowIndex, updates, expectedTimestamp, expectedClassro
     if (updates.photoDeduction !== undefined) photoDeduction = Number(updates.photoDeduction) || 0;
     if (updates.directDeduction !== undefined) directDeduction = Number(updates.directDeduction) || 0;
     if (updates.bonus !== undefined) bonus = Number(updates.bonus) || 0;
-    if (photoDeduction < 0) photoDeduction = 0;
-    if (directDeduction < 0) directDeduction = 0;
-    if (bonus < 0) bonus = 0;
+
+    const evaluatorType = cleanCellStr_(row, col.evaluatorType);
+    const scored = computeCleanWeightedScore_(photoDeduction, directDeduction, bonus, evaluatorType);
+    photoDeduction = scored.photoDeduction;
+    directDeduction = scored.directDeduction;
+    bonus = scored.bonus;
 
     row[col.photoDeduction] = photoDeduction;
     if (col.directDeduction >= 0) row[col.directDeduction] = directDeduction;
     row[col.bonus] = bonus;
 
-    let totalScore;
+    // 預設依權重重算；若明確覆寫總分（特殊修正）則保留，但加分仍受上限 3 約束
+    let totalScore = scored.totalScore;
     if (updates.totalScore !== undefined && updates.totalScore !== null && String(updates.totalScore).trim() !== '') {
-      totalScore = Number(updates.totalScore);
-      if (isNaN(totalScore)) totalScore = bonus - photoDeduction - directDeduction;
-    } else {
-      totalScore = bonus - photoDeduction - directDeduction;
+      const override = Number(updates.totalScore);
+      if (!isNaN(override)) totalScore = override;
     }
     row[col.totalScore] = totalScore;
 

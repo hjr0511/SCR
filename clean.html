@@ -923,6 +923,7 @@
           <input type="hidden" id="adminEditRowIndex">
           <input type="hidden" id="adminEditTimestamp">
           <input type="hidden" id="adminEditClassroomName">
+          <input type="hidden" id="adminEditEvaluatorType">
           <div class="form-group">
             <label>教室</label>
             <input type="text" id="adminEditClassroomLabel" disabled>
@@ -955,12 +956,13 @@
             <input type="number" id="adminEditDirectDeduction" step="0.1" min="0">
           </div>
           <div class="form-group">
-            <label for="adminEditBonus">加分</label>
-            <input type="number" id="adminEditBonus" step="0.1" min="0">
+            <label for="adminEditBonus">加分（僅衛生組；每次最多 3）</label>
+            <input type="number" id="adminEditBonus" step="0.1" min="0" max="3">
           </div>
           <div class="form-group">
-            <label for="adminEditTotalScore">總分（可手動覆寫；空白則依 加分−扣分項目−直接扣分 計算）</label>
-            <input type="number" id="adminEditTotalScore" step="0.1">
+            <label for="adminEditTotalScore">總分（預設依權重自動計算；僅特殊修正時再手動覆寫）</label>
+            <input type="number" id="adminEditTotalScore" step="0.01">
+            <p style="font-size: 12px; color: #666; margin: 4px 0 0;">衛生股長／服務隊／衛生組 ×0.25；教師／巡堂 ×0.5。改扣分或加分會重算總分。</p>
           </div>
           <div class="form-group">
             <label for="adminEditNotes">備註</label>
@@ -1802,7 +1804,6 @@
         const totalRecords = records.length;
         let totalDeduction = 0;
         let totalBonus = 0;
-        let totalScore = 0;
         
         records.forEach(function(record) {
           if (!record) return;
@@ -1813,8 +1814,9 @@
           // 計分扣分／加分 = 原始項目數 × 權重（例如 1×0.25=0.25）
           totalDeduction += (photoDeduction + directDeduction) * weight;
           totalBonus += bonus * weight;
-          totalScore += parseFloat(record.totalScore) || 0;
         });
+        // 總分 = 總加分（計分）− 總扣分（計分），不直接加總各列「總分」欄
+        const totalScore = totalBonus - totalDeduction;
         
         const totalRecordsEl = document.getElementById('totalRecords');
         const totalDeductionEl = document.getElementById('totalDeduction');
@@ -2455,16 +2457,48 @@
       return matched[1] + '-' + matched[2] + '-' + matched[3] + ' ' + matched[4] + ':' + matched[5] + ':' + (matched[6] || '00');
     }
 
+    function computeAdminEditTotalScore() {
+      const evaluatorType = document.getElementById('adminEditEvaluatorType').value || '';
+      let photo = Number(document.getElementById('adminEditPhotoDeduction').value) || 0;
+      let direct = Number(document.getElementById('adminEditDirectDeduction').value) || 0;
+      let bonus = Number(document.getElementById('adminEditBonus').value) || 0;
+      if (photo < 0) photo = 0;
+      if (direct < 0) direct = 0;
+      if (bonus < 0) bonus = 0;
+      if (bonus > 3) bonus = 3;
+      // 僅衛生組可加分
+      if (String(evaluatorType).indexOf('衛生組') < 0) bonus = 0;
+      const weight = cleanScoreWeight(evaluatorType);
+      const total = bonus * weight - (photo + direct) * weight;
+      const bonusEl = document.getElementById('adminEditBonus');
+      if (bonusEl && Number(bonusEl.value) !== bonus) bonusEl.value = bonus;
+      const totalEl = document.getElementById('adminEditTotalScore');
+      if (totalEl) totalEl.value = formatPreciseScore(total);
+      return total;
+    }
+
+    function bindAdminEditScoreRecalc() {
+      ['adminEditPhotoDeduction', 'adminEditDirectDeduction', 'adminEditBonus'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.recalcBound === '1') return;
+        el.dataset.recalcBound = '1';
+        el.addEventListener('input', computeAdminEditTotalScore);
+        el.addEventListener('change', computeAdminEditTotalScore);
+      });
+    }
+
     function openAdminEditRecord(rowIndex) {
       const record = lastRecordsByRow[rowIndex];
       if (!record) {
         showAdminNotice('找不到該筆記錄，請重新查詢', 'error');
         return;
       }
+      bindAdminEditScoreRecalc();
       document.getElementById('adminEditRowIndex').value = String(record.rowIndex);
       document.getElementById('adminEditTimestamp').value = record.timestamp || '';
       document.getElementById('adminEditScoreTime').value = timestampToDatetimeLocal(record.timestamp);
       document.getElementById('adminEditClassroomName').value = record.classroomName || '';
+      document.getElementById('adminEditEvaluatorType').value = record.evaluatorType || '';
       document.getElementById('adminEditClassroomLabel').value =
         (record.classroomName || '') + (record.classroomId ? ' (' + record.classroomId + ')' : '');
       const areaEl = document.getElementById('adminEditArea');
@@ -2473,10 +2507,12 @@
       if (slotEl) slotEl.value = record.timeSlot || '午休';
       document.getElementById('adminEditPhotoDeduction').value = Number(record.photoDeduction) || 0;
       document.getElementById('adminEditDirectDeduction').value = Number(record.directDeduction) || 0;
-      document.getElementById('adminEditBonus').value = Number(record.bonus) || 0;
-      document.getElementById('adminEditTotalScore').value = Number(record.totalScore) || 0;
+      let bonusVal = Number(record.bonus) || 0;
+      if (bonusVal > 3) bonusVal = 3;
+      document.getElementById('adminEditBonus').value = bonusVal;
       document.getElementById('adminEditNotes').value = record.notes || '';
       document.getElementById('adminEditPassword').value = '';
+      computeAdminEditTotalScore();
       const overlay = document.getElementById('adminEditModalOverlay');
       if (overlay) overlay.style.display = 'flex';
     }
@@ -2498,6 +2534,13 @@
         showAdminNotice('請填寫正確的評分時間', 'error');
         return;
       }
+      let bonusVal = Number(document.getElementById('adminEditBonus').value) || 0;
+      if (bonusVal > 3) {
+        showAdminNotice('加分每次最多 3 分，已自動調整', 'error');
+        bonusVal = 3;
+        document.getElementById('adminEditBonus').value = 3;
+        computeAdminEditTotalScore();
+      }
       const totalRaw = String(document.getElementById('adminEditTotalScore').value || '').trim();
       const updates = {
         timestamp: scoreTime,
@@ -2505,7 +2548,7 @@
         timeSlot: document.getElementById('adminEditTimeSlot').value,
         photoDeduction: Number(document.getElementById('adminEditPhotoDeduction').value) || 0,
         directDeduction: Number(document.getElementById('adminEditDirectDeduction').value) || 0,
-        bonus: Number(document.getElementById('adminEditBonus').value) || 0,
+        bonus: bonusVal,
         notes: document.getElementById('adminEditNotes').value || ''
       };
       if (totalRaw !== '') updates.totalScore = Number(totalRaw);
