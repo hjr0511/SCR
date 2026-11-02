@@ -892,7 +892,7 @@
       
       <div class="photo-section" id="itemSection">
         <p class="section-label">缺失項目（每項扣 1 分）</p>
-        <p class="info-text">依評分區域顯示可勾選項目。代號大小寫都可以，例如 1d 與 1D 都是資源、一般垃圾桶。備註寫上「三年級評二年級」時，也會自動套用 1D 扣 1。</p>
+        <p class="info-text">依評分區域顯示可勾選項目。勾選後會寫進備註，取消勾選就從備註拿掉。代號大小寫都可以，例如 1d 與 1D 都是資源、一般垃圾桶。備註寫上「三年級評二年級」時，也會自動套用 1D 扣 1。</p>
         <div id="itemChecks"></div>
         <p class="info-text" id="itemForceHint" style="display: none;"></p>
         <div class="score-summary">
@@ -941,7 +941,7 @@
       
       <div class="form-group">
         <label for="notes">備註</label>
-        <textarea id="notes" name="notes" rows="3" placeholder="可輸入額外說明。代號大小寫都可以，例如 1d。寫上「三年級評二年級」會自動套用 1D 資源、一般垃圾桶扣 1。勾選其它或樓梯時請註明。"></textarea>
+        <textarea id="notes" name="notes" rows="3" placeholder="勾選的項目會顯示在這裡。可再補充說明。代號大小寫都可以，例如 1d。寫上「三年級評二年級」會自動套用 1D。勾選其它或樓梯時請註明。"></textarea>
       </div>
       
       <div class="score-summary bonus">
@@ -1127,6 +1127,92 @@
       return Object.keys(byCode).map(function(code) { return byCode[code]; });
     }
 
+    function notesMentionAt(source, index, code) {
+      const wanted = String(code || '');
+      if (!wanted || index < 0 || index + wanted.length > source.length) return false;
+      if (source.substr(index, wanted.length).toUpperCase() !== wanted.toUpperCase()) return false;
+      const prev = index > 0 ? source.charAt(index - 1) : '';
+      const next = source.charAt(index + wanted.length);
+      if (prev && /[0-9A-Za-z]/.test(prev)) return false;
+      if (next && /[0-9A-Za-z]/.test(next)) return false;
+      return true;
+    }
+
+    function stripCleanItemMentions(text) {
+      const raw = String(text || '');
+      const items = (window.CLEAN_SCORE_ITEMS || []).slice().sort(function(a, b) {
+        return b.code.length - a.code.length;
+      });
+      let out = '';
+      for (let i = 0; i < raw.length; i++) {
+        let matched = null;
+        for (let j = 0; j < items.length; j++) {
+          if (!notesMentionAt(raw, i, items[j].code)) continue;
+          matched = items[j];
+          break;
+        }
+        if (!matched) {
+          out += raw.charAt(i);
+          continue;
+        }
+        i += matched.code.length;
+        while (i < raw.length && /\s/.test(raw.charAt(i))) i++;
+        if (raw.slice(i).indexOf(matched.name) === 0) i += matched.name.length;
+        const deduct = raw.slice(i).match(/^\s*扣\s*1/);
+        if (deduct) i += deduct[0].length;
+        i--;
+      }
+      return out
+        .replace(/[，,、；;]{2,}/g, '，')
+        .replace(/^[，,、；;\s]+|[，,、；;\s]+$/g, '')
+        .trim();
+    }
+
+    function checkedCleanItemsInOrder() {
+      const catalog = window.CLEAN_SCORE_ITEMS || [];
+      const area = (document.getElementById('area').value || '').trim();
+      const checked = {};
+      document.querySelectorAll('#itemChecks input[type="checkbox"]:checked').forEach(function(input) {
+        checked[input.getAttribute('data-code')] = true;
+      });
+      if (notesForceClean1D()) checked['1D'] = true;
+      return catalog.filter(function(item) {
+        if (!checked[item.code]) return false;
+        if (item.area === area) return true;
+        return item.code === '1D' && notesForceClean1D();
+      });
+    }
+
+    function checkedCleanCodeKey() {
+      const codes = [];
+      document.querySelectorAll('#itemChecks input[type="checkbox"]:checked').forEach(function(input) {
+        codes.push(input.getAttribute('data-code'));
+      });
+      return codes.sort().join(',');
+    }
+
+    function syncNotesFromChecks() {
+      const notesEl = document.getElementById('notes');
+      if (!notesEl) return;
+      const extra = stripCleanItemMentions(notesEl.value);
+      const labels = checkedCleanItemsInOrder().map(function(item) {
+        return item.code + ' ' + item.name + '扣1';
+      });
+      const parts = [];
+      if (extra) parts.push(extra);
+      if (labels.length) parts.push(labels.join('，'));
+      const next = parts.join('，');
+      if (notesEl.value === next) return;
+      const start = notesEl.selectionStart;
+      const end = notesEl.selectionEnd;
+      const delta = next.length - notesEl.value.length;
+      notesEl.value = next;
+      if (document.activeElement === notesEl && start != null) {
+        const pos = Math.max(0, Math.min(next.length, start + delta));
+        notesEl.setSelectionRange(pos, end == null ? pos : Math.max(pos, end + delta));
+      }
+    }
+
     function composeCleanNotes(userNotes, items) {
       let notes = String(userNotes || '').trim();
       const extras = [];
@@ -1222,7 +1308,11 @@
           input.type = 'checkbox';
           input.setAttribute('data-code', item.code);
           input.checked = !!prev[item.code];
-          input.addEventListener('change', updateTotalScore);
+          input.addEventListener('change', function() {
+            delete cleanItemsAutoFromNotes[item.code];
+            syncNotesFromChecks();
+            updateTotalScore();
+          });
           const span = document.createElement('span');
           const codeEl = document.createElement('strong');
           codeEl.textContent = item.code;
@@ -1234,6 +1324,7 @@
         });
       }
       syncForcedCleanItem();
+      syncNotesFromChecks();
       updateTotalScore();
     }
 
@@ -1751,7 +1842,9 @@
       document.getElementById('directDeduction').addEventListener('input', updateTotalScore);
 
       document.getElementById('notes').addEventListener('input', function() {
+        const before = checkedCleanCodeKey();
         syncForcedCleanItem();
+        if (checkedCleanCodeKey() !== before) syncNotesFromChecks();
         updateTotalScore();
       });
       
@@ -2416,7 +2509,7 @@
       if (!area) missing.push('評分區域');
       const selectedItems = getSelectedCleanItems();
       const noteText = (document.getElementById('notes').value || '').trim();
-      const noteBody = noteText.replace(/三年級評二年級/g, '').replace(/[，,。、；;\s]/g, '');
+      const noteBody = stripCleanItemMentions(noteText).replace(/三年級評二年級/g, '').replace(/[，,。、；;\s]/g, '');
       const noteNeeded = selectedItems.filter(function(item) { return item.needsNote; });
       if (noteNeeded.length && !noteBody) {
         missing.push('已勾選需註明的項目（' + noteNeeded.map(function(item) { return item.code; }).join('、') + '），請在備註寫明內容');
