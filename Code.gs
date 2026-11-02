@@ -1227,168 +1227,68 @@ function updateScoreRecord(rowIndex, updates, expectedTimestamp, expectedClassro
  */
 function getWeeklyStatistics(weekStartDate) {
   try {
-    const loaded = loadCleanScoreData_();
-    if (!loaded.sheet) {
-      return { error: '找不到評分記錄工作表' };
-    }
-    if (!loaded.records.length) {
-      return { error: '沒有評分記錄' };
-    }
-    const col = loaded.col;
-    
-    // 計算週的開始和結束日期
-    let weekStart;
-    let weekEnd;
-    
-    if (weekStartDate) {
-      weekStart = new Date(weekStartDate + ' 00:00:00');
-      weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
-    } else {
-      // 預設為本週（週一到週日）
-      const today = new Date();
-      const dayOfWeek = today.getDay(); // 0=週日, 1=週一, ..., 6=週六
-      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // 調整為週一開始
-      weekStart = new Date(today);
-      weekStart.setDate(today.getDate() + diff);
-      weekStart.setHours(0, 0, 0, 0);
-      weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
-    }
-    
-    // 取得資料列（跳過標題列）
-    const records = loaded.records;
-    
-    // 過濾本週的記錄
-    const weeklyRecords = records.filter(function(row) {
-      try {
-        const recordDate = new Date(row[col.timestamp]);
-        return recordDate >= weekStart && recordDate <= weekEnd;
-      } catch (err) {
-        return false;
-      }
-    });
-    
-    // 按年級和「教室名稱」分組，計算總分
-    // row[2] = 被評年級, row[5] = 教室編號, row[6] = 教室名稱, row[12] = 總分
-    // 這裡只用「教室名稱」作為分組依據，同名教室視為同一班級來統計
-    const gradeGroups = {};
-    
-    // 從教室名稱提取年級的函數（改進版：優先匹配完整年級，避免誤判）
-    function extractGradeFromName(name) {
-      if (!name) return '';
-      const text = String(name);
-      // 優先匹配完整年級名稱（如「一年一班」「二年一班」「三年一班」）
-      if (text.includes('一年')) return '一年級';
-      if (text.includes('二年')) return '二年級';
-      if (text.includes('三年')) return '三年級';
-      // 匹配數字格式（如「1年一班」「2年一班」「3年一班」）
-      if (text.includes('1年') || (text.match(/^1/) && !text.match(/^10/))) return '一年級';
-      if (text.includes('2年') || (text.match(/^2/) && !text.match(/^20/))) return '二年級';
-      if (text.includes('3年') || (text.match(/^3/) && !text.match(/^30/))) return '三年級';
-      // 最後匹配單個年級字（如「電機一忠」「電機二孝」「電機三忠」）
-      // 使用正則表達式精確匹配，避免誤判
-      const gradeMatch = text.match(/([一二三])/);
-      if (gradeMatch) {
-        const char = gradeMatch[1];
-        if (char === '一') return '一年級';
-        if (char === '二') return '二年級';
-        if (char === '三') return '三年級';
-      }
-      return '';
-    }
-    
-    weeklyRecords.forEach(function(row) {
-      const classroomId = String(row[col.classroomId] || '').trim();
-      const classroomName = String(row[col.classroomName] || '').trim();
-      const totalScore = cleanCellNum_(row, col.totalScore);
-      // 優先從教室名稱判斷年級，避免評分者對應把「機械二孝」寫成三年級
-      let grade = extractGradeFromName(classroomName) || String(row[col.evaluatedGrade] || '').trim();
-      
-      // 使用「教室名稱」作為分組 key，只依名稱統計
-      const classroomKey = classroomName;
-      
-      // 沒有年級或沒有教室名稱就不計算（編號可能是樓層、不適合作唯一鍵）
-      if (!grade || !classroomName) return;
-      
-      // 初始化年級組
-      if (!gradeGroups[grade]) {
-        gradeGroups[grade] = {};
-      }
-      
-      // 初始化教室（以 classroomKey 為索引）
-      if (!gradeGroups[grade][classroomKey]) {
-        gradeGroups[grade][classroomKey] = {
-          classroomId: classroomId,
-          classroomName: classroomName,
-          grade: grade,
-          totalScore: 0,
-          recordCount: 0
-        };
-      }
-      
-      // 累加總分
-      gradeGroups[grade][classroomKey].totalScore += totalScore;
-      gradeGroups[grade][classroomKey].recordCount += 1;
-    });
-    
-    // 轉換為陣列並排序，找出特優和優等（處理同分名次）
+    // 與 CSV／PDF 同一套：教室清單全班先以 0 分列入，再累加該週評分
+    const range = getWeekDateRange_(weekStartDate);
+    const weekStart = range.weekStart;
+    const weekEnd = range.weekEnd;
+    const gradeGroups = collectWeeklyGradeScores_(weekStart, weekEnd);
+    const grades = ['一年級', '二年級', '三年級'];
+    const rankedData = rankWeeklyGradeGroups_(gradeGroups, grades);
+    // 特優／優等與 CSV／PDF 相同（普通／服務科註4並列，不擠占一般科名額）
+    const config = getWeeklyHonorPdfConfig_();
+    const awardLists = buildHonorAwardLists_(rankedData, grades, config);
     const result = {};
-    
-    Object.keys(gradeGroups).forEach(grade => {
-      const classrooms = Object.values(gradeGroups[grade]);
-      
-      // 按總分降序排序（分數越高越好）
-      classrooms.sort((a, b) => b.totalScore - a.totalScore);
-      
-      // 依總分計算名次：
-      // - 同分者名次相同
-      // - 例如第4、5、6名同分，三者皆為第4名，下一名為第7名
-      const rankedClassrooms = [];
-      let lastScore = null;
-      let currentRank = 0;
-      
-      for (let i = 0; i < classrooms.length; i++) {
-        const cls = classrooms[i];
-        if (lastScore === null || cls.totalScore !== lastScore) {
-          currentRank = i + 1; // 新分數，名次 = 目前索引 + 1
-          lastScore = cls.totalScore;
-        }
-        rankedClassrooms.push({
-          rank: currentRank,
-          ...cls
-        });
+
+    grades.forEach(function(grade) {
+      const ranked = rankedData[grade];
+      if (!ranked || !ranked.allClassrooms || ranked.allClassrooms.length === 0) {
+        return;
       }
-      
-      // 特優：名次 <= 3 的所有班級（可能超過3個，因為同分並列）
-      const top3 = rankedClassrooms.filter(c => c.rank <= 3);
-      
-      // 優等：名次 >= 4 起取約 3 名，同分增額
-      const excellent3 = pickHonorExcellentWithTies_(rankedClassrooms);
-      
+      const rankedClassrooms = ranked.allClassrooms;
+      const byName = {};
+      rankedClassrooms.forEach(function(c) {
+        byName[c.classroomName] = c;
+      });
+      const top3 = [];
+      const excellent3 = [];
+      (awardLists[grade] || []).forEach(function(row) {
+        const cls = byName[row.name];
+        if (!cls) return;
+        const item = {
+          rank: cls.rank,
+          classroomId: cls.classroomId,
+          classroomName: cls.classroomName,
+          grade: cls.grade,
+          totalScore: cls.totalScore,
+          recordCount: cls.recordCount,
+          awardLabel: row.label
+        };
+        if (String(row.label).indexOf('特優') === 0) top3.push(item);
+        else excellent3.push(item);
+      });
+
       // 待改進：最後「三個位置」往後擴展，將同分者一起納入
       let bottom3 = [];
       if (rankedClassrooms.length <= 3) {
-        bottom3 = rankedClassrooms.slice(); // 班級數小於等於3，全列入
+        bottom3 = rankedClassrooms.slice();
       } else {
-        const thresholdIndex = Math.max(0, rankedClassrooms.length - 3); // 第三名倒數的位置
+        const thresholdIndex = Math.max(0, rankedClassrooms.length - 3);
         const thresholdScore = rankedClassrooms[thresholdIndex].totalScore;
-        // 分數「小於等於」第三名倒數的分數者，全部列入待改進
-        bottom3 = rankedClassrooms.filter(c => c.totalScore <= thresholdScore);
+        bottom3 = rankedClassrooms.filter(function(c) {
+          return c.totalScore <= thresholdScore;
+        });
       }
-      
+
       result[grade] = {
         grade: grade,
         totalClassrooms: rankedClassrooms.length,
-        top3: top3,              // 特優（名次1-3）
-        excellent3: excellent3,  // 優等（名次4-6）
-        bottom3: bottom3,        // 待改進（最後三個名次）
+        top3: top3,
+        excellent3: excellent3,
+        bottom3: bottom3,
         allClassrooms: rankedClassrooms
       };
     });
-    
+
     return {
       success: true,
       weekStart: Utilities.formatDate(weekStart, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
@@ -2578,118 +2478,24 @@ function exportSheetToPdfFile_(ss, sheet, filename) {
  * @param {string} weekStartDate 週開始日期 (yyyy-MM-dd，選填，空白=本週)
  * @return {Object} { success, message, filename, csvContent }
  */
+/**
+ * 分數寫入 CSV／畫面：保留實際小數（如 0.25），去掉浮點雜訊，不做四捨五入到 1 位。
+ */
+function formatExactScore_(n) {
+  const x = Number(n);
+  if (!isFinite(x)) return '0';
+  return String(parseFloat(x.toFixed(10)));
+}
+
 function exportWeeklyStatisticsCsv(weekStartDate) {
   try {
-    const loaded = loadCleanScoreData_();
-    if (!loaded.sheet) {
-      return {
-        success: false,
-        message: '找不到評分記錄工作表'
-      };
-    }
-    const col = loaded.col;
-    
-    // 計算週的開始和結束日期
-    let weekStart;
-    let weekEnd;
-    
-    if (weekStartDate) {
-      weekStart = new Date(weekStartDate + ' 00:00:00');
-      weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
-    } else {
-      const today = new Date();
-      const dayOfWeek = today.getDay();
-      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      weekStart = new Date(today);
-      weekStart.setDate(today.getDate() + diff);
-      weekStart.setHours(0, 0, 0, 0);
-      weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
-    }
-    
-    // 取得資料列（跳過標題列）
-    const records = loaded.records;
-    
-    // 過濾本週的記錄
-    const weeklyRecords = records.filter(function(row) {
-      try {
-        const recordDate = new Date(row[col.timestamp]);
-        return recordDate >= weekStart && recordDate <= weekEnd;
-      } catch (err) {
-        return false;
-      }
-    });
-    
-    // 從教室名稱提取年級的函數
-    function extractGradeFromName(name) {
-      if (!name) return '';
-      const text = String(name);
-      if (text.includes('一年')) return '一年級';
-      if (text.includes('二年')) return '二年級';
-      if (text.includes('三年')) return '三年級';
-      if (text.includes('1年') || (text.match(/^1/) && !text.match(/^10/))) return '一年級';
-      if (text.includes('2年') || (text.match(/^2/) && !text.match(/^20/))) return '二年級';
-      if (text.includes('3年') || (text.match(/^3/) && !text.match(/^30/))) return '三年級';
-      const gradeMatch = text.match(/([一二三])/);
-      if (gradeMatch) {
-        const char = gradeMatch[1];
-        if (char === '一') return '一年級';
-        if (char === '二') return '二年級';
-        if (char === '三') return '三年級';
-      }
-      return '';
-    }
-    
-    // 先帶入教室清單全班（沒評過＝0），再累加該週評分
-    const gradeGroups = seedWeeklyGradeGroupsFromClassroomList_();
-    
-    weeklyRecords.forEach(function(row) {
-      const classroomId = String(row[col.classroomId] || '').trim();
-      const classroomName = String(row[col.classroomName] || '').trim();
-      const totalScore = cleanCellNum_(row, col.totalScore);
-      const recordDate = new Date(row[col.timestamp]);
-      // 優先從教室名稱判斷年級
-      let grade = extractGradeFromName(classroomName) || String(row[col.evaluatedGrade] || '').trim();
-      
-      const classroomKey = classroomName;
-      
-      if (!grade || !classroomName) return;
-      
-      if (!gradeGroups[grade]) {
-        gradeGroups[grade] = {};
-      }
-      
-      if (!gradeGroups[grade][classroomKey]) {
-        gradeGroups[grade][classroomKey] = createEmptyWeeklyClassroom_(classroomName, classroomId, grade);
-      }
-      
-      // 取得星期幾（0=週日, 1=週一, ..., 6=週六）
-      const dayOfWeek = recordDate.getDay();
-      
-      // 根據星期幾累加分數
-      if (dayOfWeek === 1) {
-        gradeGroups[grade][classroomKey].monday += totalScore;
-      } else if (dayOfWeek === 2) {
-        gradeGroups[grade][classroomKey].tuesday += totalScore;
-      } else if (dayOfWeek === 3) {
-        gradeGroups[grade][classroomKey].wednesday += totalScore;
-      } else if (dayOfWeek === 4) {
-        gradeGroups[grade][classroomKey].thursday += totalScore;
-      } else if (dayOfWeek === 5) {
-        gradeGroups[grade][classroomKey].friday += totalScore;
-      } else if (dayOfWeek === 6) {
-        gradeGroups[grade][classroomKey].saturday += totalScore;
-      }
-      
-      gradeGroups[grade][classroomKey].totalScore += totalScore;
-      gradeGroups[grade][classroomKey].recordCount += 1;
-    });
-    
-    // 計算排名並生成 CSV
+    // 與網頁每週統計／PDF 同一套彙總與排名
+    const range = getWeekDateRange_(weekStartDate);
+    const weekStart = range.weekStart;
+    const weekEnd = range.weekEnd;
+    const gradeGroups = collectWeeklyGradeScores_(weekStart, weekEnd);
     const grades = ['一年級', '二年級', '三年級'];
+    const rankedData = rankWeeklyGradeGroups_(gradeGroups, grades);
     const lines = [];
     
     // 格式化日期為中文格式（例如：10/27-10/31）
@@ -2704,88 +2510,30 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
     const schoolYear = meta.schoolYear;
     const semester = meta.semester;
     const weekNum = meta.weekNum;
+    const config = getWeeklyHonorPdfConfig_();
+    const awardLists = buildHonorAwardLists_(rankedData, grades, config);
     
-    // ========== 第一頁：績優班級 ==========
+    // ========== 第一頁：績優班級（與 PDF 相同註4規則） ==========
     lines.push('中正高工生活榮譽競賽整潔評比績優班級');
     lines.push(schoolYear + '學年度第' + semester + '學期第' + weekNum + '週(' + formatDateRange(weekStart, weekEnd) + ')');
     lines.push(''); // 空行
-    
-    // 先計算所有年級的排名
-    const rankedData = {};
-    grades.forEach(function(grade) {
-      if (!gradeGroups[grade]) {
-        rankedData[grade] = { top3: [], excellent3: [], allClassrooms: [] };
-        return;
-      }
-      
-      const classrooms = Object.values(gradeGroups[grade]);
-      
-      // 按總分降序排序
-      classrooms.sort((a, b) => b.totalScore - a.totalScore);
-      
-      // 計算排名（同分同名次）
-      let lastScore = null;
-      let currentRank = 0;
-      
-      classrooms.forEach((cls, index) => {
-        if (lastScore === null || cls.totalScore !== lastScore) {
-          currentRank = index + 1;
-          lastScore = cls.totalScore;
-        }
-        cls.rank = currentRank;
-      });
-      
-      // 特優：名次 <= 3
-      const top3 = classrooms.filter(c => c.rank <= 3);
-      
-      // 優等：名次 >= 4 起取約 3 名，同分增額（不可 slice 截斷）
-      const excellent3 = pickHonorExcellentWithTies_(classrooms);
-      
-      rankedData[grade] = {
-        top3: top3,
-        excellent3: excellent3,
-        allClassrooms: classrooms
-      };
-    });
     
     // 第一頁表格標頭
     lines.push('高一,,高二,,高三');
     lines.push('名次,班級,名次,班級,名次,班級');
     
-    // 找出三個年級中特優和優等的最大數量
-    const maxTop3 = Math.max(
-      rankedData['一年級'].top3.length,
-      rankedData['二年級'].top3.length,
-      rankedData['三年級'].top3.length
-    );
-    const maxExcellent3 = Math.max(
-      rankedData['一年級'].excellent3.length,
-      rankedData['二年級'].excellent3.length,
-      rankedData['三年級'].excellent3.length
+    const maxAwardRows = Math.max(
+      (awardLists['一年級'] || []).length,
+      (awardLists['二年級'] || []).length,
+      (awardLists['三年級'] || []).length
     );
     
-    // 輸出特優
-    for (let i = 0; i < maxTop3; i++) {
+    for (let i = 0; i < maxAwardRows; i++) {
       const row = [];
       grades.forEach(function(grade) {
-        const top3 = rankedData[grade].top3;
-        if (i < top3.length) {
-          row.push('特優', '"' + top3[i].classroomName.replace(/"/g, '""') + '"');
-        } else {
-          row.push('', '');
-        }
-      });
-      lines.push(row.join(','));
-    }
-    
-    // 輸出優等
-    for (let i = 0; i < maxExcellent3; i++) {
-      const row = [];
-      grades.forEach(function(grade) {
-        const excellent3 = rankedData[grade].excellent3;
-        if (i < excellent3.length) {
-          const isSpecial = excellent3[i].classroomName.includes('普通'); // 普通科標記
-          row.push('優等' + (isSpecial ? '*' : ''), '"' + excellent3[i].classroomName.replace(/"/g, '""') + '"');
+        const list = awardLists[grade] || [];
+        if (i < list.length) {
+          row.push(list[i].label, '"' + String(list[i].name || '').replace(/"/g, '""') + '"');
         } else {
           row.push('', '');
         }
@@ -2795,14 +2543,13 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
     
     lines.push(''); // 空行
     lines.push('附記');
-    lines.push('一、週評比取前6名，若因名次重複而超過6個班級，則增額授獎；每日評分細項如共享雲端資料夾附件所示。');
-    lines.push('二、每週由學務處統一公佈績優班級及名次。');
-    lines.push('三、利用集會時機統一頒發獎狀，如無集會時機，則由學務主任召集受獎班級衛生股長頒發或放班級櫃。');
-    lines.push('四、服務科及普通科之評分，不與一般科班評比排序，惟仍依得分並列名次');
+    config.notes.forEach(function(note) {
+      lines.push(note);
+    });
     lines.push(''); // 空行
     lines.push(''); // 空行
     
-    // ========== 第二頁：詳細評分明細 ==========
+    // ========== 第二頁：詳細評分明細（精確分數，不四捨五入） ==========
     lines.push('中正高工生活榮譽競賽整潔評比績優班級 ' + schoolYear + '學年度第' + semester + '學期第' + weekNum + '週(' + formatDateRange(weekStart, weekEnd) + ')');
     lines.push(['', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '總分', '排名', '名次'].join(','));
     
@@ -2811,7 +2558,6 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       
       const classrooms = rankedData[grade].allClassrooms;
       
-      // 生成 CSV 行
       classrooms.forEach(function(classroom) {
         const name = classroom.classroomName || '';
         const rankLabel = classroom.rank || '';
@@ -2819,13 +2565,13 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
         
         const row = [
           '"' + name.replace(/"/g, '""') + '"',
-          classroom.monday,
-          classroom.tuesday,
-          classroom.wednesday,
-          classroom.thursday,
-          classroom.friday,
-          classroom.saturday,
-          classroom.totalScore,
+          formatExactScore_(classroom.monday),
+          formatExactScore_(classroom.tuesday),
+          formatExactScore_(classroom.wednesday),
+          formatExactScore_(classroom.thursday),
+          formatExactScore_(classroom.friday),
+          formatExactScore_(classroom.saturday),
+          formatExactScore_(classroom.totalScore),
           rankText || '',
           rankLabel || ''
         ];

@@ -1135,6 +1135,15 @@
     let holdClassroomNetwork = false;
     let lastRecordsByRow = {};
     let lastQueryMode = 'filter'; // 'filter' | 'all'
+
+    // 精確分數：保留 0.25 等實際小數，去掉浮點雜訊，不做 toFixed(1) 四捨五入
+    function formatPreciseScore(n, withSign) {
+      const x = Number(n);
+      if (!isFinite(x)) return '0';
+      const s = String(parseFloat(x.toFixed(10)));
+      if (withSign && x > 0) return '+' + s;
+      return s;
+    }
     
     // 頁面載入時初始化
     window.onload = function() {
@@ -1737,7 +1746,7 @@
             '<td>' + (parseFloat(record.photoDeduction) || 0) + '</td>' +
             '<td>' + (parseFloat(record.directDeduction) || 0) + '</td>' +
             '<td>' + (parseFloat(record.bonus) || 0) + '</td>' +
-            '<td class="' + scoreClass + '">' + totalScore.toFixed(1) + '</td>' +
+            '<td class="' + scoreClass + '">' + formatPreciseScore(totalScore) + '</td>' +
             '<td>' + escapeHtml(record.notes || '') + '</td>' +
             '<td class="photo-links">' + photoLinksHtml + '</td>' +
             '<td class="admin-actions">' +
@@ -1799,11 +1808,11 @@
         const totalScoreItem = document.getElementById('totalScoreItem');
         
         if (totalRecordsEl) totalRecordsEl.textContent = totalRecords;
-        if (totalDeductionEl) totalDeductionEl.textContent = totalDeduction.toFixed(1);
-        if (totalBonusEl) totalBonusEl.textContent = totalBonus.toFixed(1);
+        if (totalDeductionEl) totalDeductionEl.textContent = formatPreciseScore(totalDeduction);
+        if (totalBonusEl) totalBonusEl.textContent = formatPreciseScore(totalBonus);
         
         if (totalScoreElement) {
-          totalScoreElement.textContent = totalScore.toFixed(1);
+          totalScoreElement.textContent = formatPreciseScore(totalScore);
         }
         
         // 根據總分設定樣式
@@ -2112,17 +2121,17 @@
         const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
                           classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
         // 格式化總分：正值顯示正號
-        const formattedTotalScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+        const formattedTotalScore = formatPreciseScore(classroom.totalScore, true);
         
         html += '<tr>';
         html += '<td><span class="rank-badge ' + rankClass + '">第' + rank + '名</span></td>';
         html += '<td><strong>' + (classroom.classroomName || classroom.classroomId) + '</strong><br>(' + classroom.classroomId + ')</td>';
-        html += '<td><span class="score-badge ' + (classroom.monday > 0 ? 'score-positive' : classroom.monday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.monday.toFixed(1) + '</span></td>';
-        html += '<td><span class="score-badge ' + (classroom.tuesday > 0 ? 'score-positive' : classroom.tuesday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.tuesday.toFixed(1) + '</span></td>';
-        html += '<td><span class="score-badge ' + (classroom.wednesday > 0 ? 'score-positive' : classroom.wednesday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.wednesday.toFixed(1) + '</span></td>';
-        html += '<td><span class="score-badge ' + (classroom.thursday > 0 ? 'score-positive' : classroom.thursday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.thursday.toFixed(1) + '</span></td>';
-        html += '<td><span class="score-badge ' + (classroom.friday > 0 ? 'score-positive' : classroom.friday < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.friday.toFixed(1) + '</span></td>';
-        html += '<td><span class="score-badge ' + (classroom.weekend > 0 ? 'score-positive' : classroom.weekend < 0 ? 'score-negative' : 'score-zero') + '">' + classroom.weekend.toFixed(1) + '</span></td>';
+        html += '<td><span class="score-badge ' + (classroom.monday > 0 ? 'score-positive' : classroom.monday < 0 ? 'score-negative' : 'score-zero') + '">' + formatPreciseScore(classroom.monday) + '</span></td>';
+        html += '<td><span class="score-badge ' + (classroom.tuesday > 0 ? 'score-positive' : classroom.tuesday < 0 ? 'score-negative' : 'score-zero') + '">' + formatPreciseScore(classroom.tuesday) + '</span></td>';
+        html += '<td><span class="score-badge ' + (classroom.wednesday > 0 ? 'score-positive' : classroom.wednesday < 0 ? 'score-negative' : 'score-zero') + '">' + formatPreciseScore(classroom.wednesday) + '</span></td>';
+        html += '<td><span class="score-badge ' + (classroom.thursday > 0 ? 'score-positive' : classroom.thursday < 0 ? 'score-negative' : 'score-zero') + '">' + formatPreciseScore(classroom.thursday) + '</span></td>';
+        html += '<td><span class="score-badge ' + (classroom.friday > 0 ? 'score-positive' : classroom.friday < 0 ? 'score-negative' : 'score-zero') + '">' + formatPreciseScore(classroom.friday) + '</span></td>';
+        html += '<td><span class="score-badge ' + (classroom.weekend > 0 ? 'score-positive' : classroom.weekend < 0 ? 'score-negative' : 'score-zero') + '">' + formatPreciseScore(classroom.weekend) + '</span></td>';
         html += '<td><span class="score-badge ' + scoreClass + '" style="font-size: 16px; padding: 6px 12px;">' + formattedTotalScore + '</span></td>';
         html += '<td>' + classroom.recordCount + ' 筆</td>';
         html += '</tr>';
@@ -2696,7 +2705,7 @@
             const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
                               classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
             // 格式化分數：正值顯示正號
-            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            const formattedScore = formatPreciseScore(classroom.totalScore, true);
             html += '<tr>';
             html += '<td><span class="rank-badge ' + rankClass + '">第' + classroom.rank + '名</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
@@ -2719,7 +2728,7 @@
             const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
                               classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
             // 格式化分數：正值顯示正號
-            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            const formattedScore = formatPreciseScore(classroom.totalScore, true);
             html += '<tr>';
             html += '<td><span class="rank-badge rank-bottom">第' + classroom.rank + '名</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
@@ -2742,7 +2751,7 @@
             const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
                               classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
             // 格式化分數：正值顯示正號
-            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            const formattedScore = formatPreciseScore(classroom.totalScore, true);
             html += '<tr>';
             html += '<td><span class="rank-badge rank-warning">第' + classroom.rank + '名</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
@@ -2774,7 +2783,7 @@
             const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
                               classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
             // 格式化分數：正值顯示正號
-            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            const formattedScore = formatPreciseScore(classroom.totalScore, true);
             html += '<tr>';
             html += '<td><span class="rank-badge ' + (rankClass || '') + '">第' + classroom.rank + '名</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
@@ -2828,10 +2837,10 @@
             const rankClass = 'rank-1';
             const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
                               classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
-            // 格式化分數：正值顯示正號
-            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            const formattedScore = formatPreciseScore(classroom.totalScore, true);
+            const rankText = classroom.awardLabel || ('第' + classroom.rank + '名');
             html += '<tr>';
-            html += '<td><span class="rank-badge ' + rankClass + '">第' + classroom.rank + '名</span></td>';
+            html += '<td><span class="rank-badge ' + rankClass + '">' + rankText + '</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
             html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
             html += '<td>' + classroom.recordCount + ' 筆</td>';
@@ -2851,10 +2860,10 @@
           gradeStats.excellent3.forEach(function(classroom) {
             const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
                               classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
-            // 格式化分數：正值顯示正號
-            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            const formattedScore = formatPreciseScore(classroom.totalScore, true);
+            const rankText = classroom.awardLabel || ('第' + classroom.rank + '名');
             html += '<tr>';
-            html += '<td><span class="rank-badge rank-bottom">第' + classroom.rank + '名</span></td>';
+            html += '<td><span class="rank-badge rank-bottom">' + rankText + '</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';
             html += '<td><span class="score-badge ' + scoreClass + '">' + formattedScore + '</span></td>';
             html += '<td>' + classroom.recordCount + ' 筆</td>';
@@ -2874,8 +2883,7 @@
           gradeStats.bottom3.forEach(function(classroom) {
             const scoreClass = classroom.totalScore > 0 ? 'score-positive' : 
                               classroom.totalScore < 0 ? 'score-negative' : 'score-zero';
-            // 格式化分數：正值顯示正號
-            const formattedScore = classroom.totalScore > 0 ? '+' + classroom.totalScore.toFixed(1) : classroom.totalScore.toFixed(1);
+            const formattedScore = formatPreciseScore(classroom.totalScore, true);
             html += '<tr>';
             html += '<td><span class="rank-badge rank-warning">第' + classroom.rank + '名</span></td>';
             html += '<td>' + (classroom.classroomName || classroom.classroomId) + ' (' + classroom.classroomId + ')</td>';

@@ -1727,7 +1727,7 @@ function getWeeklyHonorPdfConfig_() {
     notes: [
       '一、 週評比取前 6 名，週評分總表如附件。',
       '二、 每週二前由學務處統一公佈績優班級及名次。',
-      '三、 每週三利用集會時機統一頒發獎狀，如無集會時機，則由學務主任召集受獎班級班長頒發。',
+      '三、 每週三利用集會時機統一頒發獎狀，如無集會時機，則由學務主任召集受獎班級\n　　風紀股長頒發。',
       '四、 服務科及普通科之評分，不與一般科班評比排序，惟仍依得分並列名次'
     ]
   };
@@ -1747,7 +1747,7 @@ function invalidateHonorPdfCacheForDate_(dateObj) {
     weekStart.setHours(0, 0, 0, 0);
     const weekKey = Utilities.formatDate(weekStart, Session.getScriptTimeZone(), 'yyyy-MM-dd');
     const contest = getWeeklyHonorPdfConfig_().contestShort;
-    CacheService.getScriptCache().remove('honorPdf_v7_' + contest + '_' + weekKey);
+    CacheService.getScriptCache().remove('honorPdf_v8_' + contest + '_' + weekKey);
   } catch (err) {}
 }
 
@@ -1767,7 +1767,7 @@ function exportWeeklyStatisticsPdf(weekStartDate, jobId) {
   const weekEnd = range.weekEnd;
   const tz = Session.getScriptTimeZone();
   const weekKey = Utilities.formatDate(weekStart, tz, 'yyyy-MM-dd');
-  const cacheKey = 'honorPdf_v7_' + config.contestShort + '_' + weekKey;
+  const cacheKey = 'honorPdf_v8_' + config.contestShort + '_' + weekKey;
   const jobKey = jobId ? ('pdfJob_' + String(jobId)) : '';
   const cache = CacheService.getScriptCache();
 
@@ -2131,15 +2131,15 @@ function formatHonorClassName_(name) {
 }
 
 function formatHonorSubtitleRaw_(meta) {
+  // 學期總成績 PDF：只顯示學年度／學期／日期，不要「第 null 週」
+  if (meta && (meta.isSemester || meta.weekNum == null || meta.weekNum === '')) {
+    return String(meta.schoolYear) + '學年度第' + meta.semester + '學期(' + meta.dateRange + ')';
+  }
   return String(meta.schoolYear) + '學年度第' + meta.semester + '學期第' +
     meta.weekNum + '週(' + meta.dateRange + ')';
 }
 
 function formatHonorSubtitle_(meta) {
-  if (meta && meta.isSemester) {
-    const year = String(meta.schoolYear).split('').join(' ');
-    return year + ' 學年度第 ' + meta.semester + ' 學期(' + meta.dateRange + ')';
-  }
   return spaceCjkTitle_(formatHonorSubtitleRaw_(meta));
 }
 
@@ -2151,9 +2151,9 @@ function getSemesterHonorPdfConfig_() {
     useNote4: true,
     excellentLabel: '優勝',
     notes: [
-      '一、 學期評比取前 6 名（特優 3 名、優勝 3 名），若因名次重複而超過 6 個班級，則增額授獎。',
+      '一、 學期評比取前 6 名（特優 3 名、優勝 3 名），若因名次重複而超過 6 個班級，\n　　則增額授獎。',
       '二、 由學務處統一公佈績優班級及名次。',
-      '三、 利用集會時機統一頒發獎狀，如無集會時機，則由學務主任召集受獎班級班長頒發。',
+      '三、 利用集會時機統一頒發獎狀，如無集會時機，則由學務主任召集受獎班級\n　　風紀股長頒發。',
       '四、 服務科及普通科之評分，不與一般科班評比排序，惟仍依得分並列名次'
     ]
   };
@@ -2377,25 +2377,51 @@ function honorNoteHangingIndentHtml_(prefix) {
   return s;
 }
 
+/** 附記續行凸排二字（兩個全形空白） */
+function honorNoteTwoCharIndentText_() {
+  return '　　';
+}
+
+function honorNoteTwoCharIndentHtml_() {
+  return '&#12288;&#12288;';
+}
+
 /**
- * 附記 3 過長時，用「召集」後的空位放下「受獎班級」，
- * 下一行用與「三、 」同寬的空白對齊「每」。
- * HTML 空白改用實體，避免 br 後面的縮排被吃掉。
+ * 附記手動換行，續行凸排二字。
+ * 若 notes 字串已含換行（每週三、學期一／三），直接保留；
+ * 否則依標記自動斷行：6 個班級，｜則增額…；受獎班級｜風紀股長頒發。
  */
 function wrapHonorNoteAfterAwardClasses_(line, html) {
-  const parts = splitHonorNotePrefix_(line);
-  const marker = '受獎班級';
-  if (!parts.prefix || parts.body.indexOf(marker) < 0) {
-    return html ? escapeHonorHtml_(line) : line;
+  const raw = String(line || '');
+  if (raw.indexOf('\n') >= 0) {
+    if (html) {
+      return escapeHonorHtml_(raw).replace(/\n/g, '<br>');
+    }
+    return raw;
+  }
+  const parts = splitHonorNotePrefix_(raw);
+  const markers = ['6 個班級，', '受獎班級'];
+  let marker = '';
+  for (let i = 0; i < markers.length; i++) {
+    if (parts.body.indexOf(markers[i]) >= 0) {
+      marker = markers[i];
+      break;
+    }
+  }
+  if (!parts.prefix || !marker) {
+    return html ? escapeHonorHtml_(raw) : raw;
   }
   const idx = parts.body.indexOf(marker) + marker.length;
   const first = parts.prefix + parts.body.substring(0, idx);
   const rest = parts.body.substring(idx);
+  if (!rest) {
+    return html ? escapeHonorHtml_(raw) : raw;
+  }
   if (html) {
-    return escapeHonorHtml_(first) + '<br>' + honorNoteHangingIndentHtml_(parts.prefix) +
+    return escapeHonorHtml_(first) + '<br>' + honorNoteTwoCharIndentHtml_() +
       escapeHonorHtml_(rest);
   }
-  return first + '\n' + honorNoteHangingIndentText_(parts.prefix) + rest;
+  return first + '\n' + honorNoteTwoCharIndentText_() + rest;
 }
 
 function formatHonorNotesHtml_(notes) {
@@ -2411,21 +2437,21 @@ function formatHonorNotesSheetValue_(notes) {
   }).join('\n');
 }
 
-/** 若轉成 Google 文件後續行縮排消失，補回與「每」切齊的空白 */
+/** 若轉成 Google 文件後續行縮排消失，補回凸排二字 */
 function ensureHonorNoteContinuationIndent_(body) {
   const tables = body.getTables();
+  const indent = honorNoteTwoCharIndentText_();
   for (let t = 0; t < tables.length; t++) {
     const table = tables[t];
     for (let r = 0; r < table.getNumRows(); r++) {
       const cell = table.getRow(r).getCell(0);
       const text = cell.getText();
-      if (text.indexOf('每週三') < 0 || text.indexOf('班長頒發') < 0) continue;
-      const prefixMatch = text.match(/三、\s*/);
-      const indent = honorNoteHangingIndentText_(prefixMatch ? prefixMatch[0] : '三、 ');
       const lines = text.split('\n');
       let changed = false;
       for (let i = 0; i < lines.length; i++) {
-        if (lines[i].indexOf('班長頒發') >= 0 && !/^[一二三四]、/.test(lines[i])) {
+        if (/^[一二三四]、/.test(lines[i])) continue;
+        // 續行：則增額授獎／風紀股長頒發
+        if (lines[i].indexOf('則增額授獎') >= 0 || lines[i].indexOf('風紀股長頒發') >= 0 || lines[i].indexOf('長頒發') >= 0) {
           const next = indent + lines[i].replace(/^[　\s]+/, '');
           if (next !== lines[i]) {
             lines[i] = next;
@@ -2835,6 +2861,7 @@ function exportSheetToPdfFile_(ss, sheet, filename) {
 /**
  * 匯出每週排名為 CSV 字串，給前端下載
  * 含高一至高三特優／優勝表，以及各班每日加減、總分與名次（不含附記）
+ * 服務科／普通科不占一般科 1～6 名額，達標並列並標註4（與 PDF 相同）
  *
  * @param {string} weekStartDate 週開始日期 (yyyy-MM-dd，選填，空白=本週)
  * @return {Object} { success, message, filename, csvContent }
@@ -2965,9 +2992,15 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
 
     applyOrderWeeklyBaseToGradeGroups_(gradeGroups);
     
-    // 計算排名並生成 CSV
+    // 計算排名並生成 CSV（授獎規則與 PDF 相同：普通／服務不占名額，達標並列註4）
     const grades = ['一年級', '二年級', '三年級'];
     const lines = [];
+    const config = getWeeklyHonorPdfConfig_();
+    const csvEsc = function(val) {
+      const text = String(val == null ? '' : val);
+      if (/[",\r\n]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
+      return text;
+    };
     
     // 格式化日期為中文格式（例如：10/27-10/31）
     const formatDateRange = function(start, end) {
@@ -2982,43 +3015,29 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
     const semester = meta.semester;
     const weekNum = meta.weekNum;
     
-    // 先計算所有年級的排名
+    // 完整排名（含全部班級，供明細用）
     const rankedData = {};
     grades.forEach(function(grade) {
       if (!gradeGroups[grade]) {
-        rankedData[grade] = { top3: [], excellent3: [], allClassrooms: [] };
+        rankedData[grade] = { allClassrooms: [] };
         return;
       }
-      
       const classrooms = Object.values(gradeGroups[grade]);
-      
-      // 按總分降序排序
-      classrooms.sort((a, b) => b.totalScore - a.totalScore);
-      
-      // 計算排名（同分同名次）
+      classrooms.sort(function(a, b) { return b.totalScore - a.totalScore; });
       let lastScore = null;
       let currentRank = 0;
-      
-      classrooms.forEach((cls, index) => {
+      classrooms.forEach(function(cls, index) {
         if (lastScore === null || cls.totalScore !== lastScore) {
           currentRank = index + 1;
           lastScore = cls.totalScore;
         }
         cls.rank = currentRank;
       });
-      
-      // 特優：名次 <= 3（同分全列）
-      const top3 = classrooms.filter(c => c.rank <= 3);
-      
-      // 優勝：名次 >= 4 起取約 3 名，同分增額（不可 slice 截斷）
-      const excellent3 = pickHonorExcellentWithTies_(classrooms);
-      
-      rankedData[grade] = {
-        top3: top3,
-        excellent3: excellent3,
-        allClassrooms: classrooms
-      };
+      rankedData[grade] = { allClassrooms: classrooms };
     });
+
+    // 績優名單：一般科占 1～6；普通／服務不占名額，依得分並列註4
+    const awardLists = buildHonorAwardLists_(rankedData, grades, config);
     
     lines.push('中正高工生活榮譽競賽秩序評比績優班級');
     lines.push(schoolYear + '學年度第' + semester + '學期第' + weekNum + '週(' + formatDateRange(weekStart, weekEnd) + ')');
@@ -3026,37 +3045,16 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
     lines.push('高一,,高二,,高三');
     lines.push('名次,班級,名次,班級,名次,班級');
 
-    const maxTop3 = Math.max(
-      rankedData['一年級'].top3.length,
-      rankedData['二年級'].top3.length,
-      rankedData['三年級'].top3.length
-    );
-    const maxExcellent3 = Math.max(
-      rankedData['一年級'].excellent3.length,
-      rankedData['二年級'].excellent3.length,
-      rankedData['三年級'].excellent3.length
-    );
-
-    for (let i = 0; i < maxTop3; i++) {
+    let maxRows = 0;
+    grades.forEach(function(grade) {
+      maxRows = Math.max(maxRows, (awardLists[grade] || []).length);
+    });
+    for (let i = 0; i < maxRows; i++) {
       const row = [];
       grades.forEach(function(grade) {
-        const top3 = rankedData[grade].top3;
-        if (i < top3.length) {
-          row.push('特優', '"' + top3[i].classroomName.replace(/"/g, '""') + '"');
-        } else {
-          row.push('', '');
-        }
-      });
-      lines.push(row.join(','));
-    }
-
-    for (let i = 0; i < maxExcellent3; i++) {
-      const row = [];
-      grades.forEach(function(grade) {
-        const excellent3 = rankedData[grade].excellent3;
-        if (i < excellent3.length) {
-          const isSpecial = excellent3[i].classroomName.includes('普通');
-          row.push('優勝' + (isSpecial ? '*' : ''), '"' + excellent3[i].classroomName.replace(/"/g, '""') + '"');
+        const rows = awardLists[grade] || [];
+        if (i < rows.length) {
+          row.push(csvEsc(rows[i].label), csvEsc(rows[i].name));
         } else {
           row.push('', '');
         }
@@ -3074,15 +3072,20 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
       if (!rankedData[grade] || !rankedData[grade].allClassrooms) return;
       
       const classrooms = rankedData[grade].allClassrooms;
+      const buckets = buildSemesterAwardBuckets_(classrooms, config);
+      const awardMap = {};
+      buckets.top3.concat(buckets.excellent3).forEach(function(item) {
+        awardMap[item.classroomName || ''] = (item.awardLabel || '') + (item.note4 ? '註4' : '');
+      });
       
       // 生成 CSV 行
       classrooms.forEach(function(classroom) {
         const name = classroom.classroomName || '';
         const rankLabel = classroom.rank || '';
-        const rankText = classroom.rank <= 3 ? '特優' : (classroom.rank >= 4 && classroom.rank <= 6 ? '優勝' : '');
+        const rankText = awardMap[name] || '';
         
         const row = [
-          '"' + name.replace(/"/g, '""') + '"',
+          csvEsc(name),
           classroom.monday,
           classroom.tuesday,
           classroom.wednesday,
@@ -3090,7 +3093,7 @@ function exportWeeklyStatisticsCsv(weekStartDate) {
           classroom.friday,
           classroom.saturday,
           classroom.totalScore,
-          rankText || '',
+          rankText,
           rankLabel || ''
         ];
         lines.push(row.join(','));
@@ -3883,11 +3886,7 @@ function exportSemesterStatisticsCsv(startDate, endDate) {
       lines.push(row.join(','));
     }
 
-    lines.push('');
-    lines.push('附記');
-    (config.notes || []).forEach(function(note) {
-      lines.push(csvEsc(note));
-    });
+    // CSV 不輸出附記（附記僅顯示於 PDF）
     lines.push('');
     lines.push('各年級完整排名');
     lines.push(['年級', '名次', '班級', '學期成績', '評分週次', '授獎'].join(','));
